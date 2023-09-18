@@ -33,6 +33,9 @@ class ISIC2018(Dataset):
 
         super(ISIC2018, self).__init__()
 
+        if setname == "train":
+            setname = "Training"
+
         # Fetch CSV
         self.csv_path = os.path.join(
             data_path,
