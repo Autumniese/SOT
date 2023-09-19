@@ -36,11 +36,14 @@ class CategoriesSampler:
         if self.const_loader:
             for i_batch in range(self.num_episodes):
                 batch = []
+                print(batch)
                 classes = torch.randperm(len(self.m_ind))[:self.num_way]
+                print(classes)
                 for c in classes:
                     l = self.m_ind[c.item()]
                     pos = torch.randperm(l.size()[0])
                     batch.append(l[pos[: self.num_shot + self.num_query]])
+                print(batch)
 
                 batch = torch.stack(batch).t().reshape(-1)
                 self.batches.append(batch)
