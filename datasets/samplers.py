@@ -22,7 +22,7 @@ class CategoriesSampler:
             ind = torch.from_numpy(ind)
             self.m_ind.append(ind)
 
-        self.m_mind = [tensor for tensor in self.m_mind if tensor.numel() > 0]
+        self.m_ind = [tensor for tensor in self.m_ind if tensor.numel() > 0]
         
         print(self.m_ind)
 
