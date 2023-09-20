@@ -85,7 +85,8 @@ class ISIC2018(Dataset):
             ]
         else:
             transforms_list = [
-                transforms.Resize((self.image_size, self.image_size)),
+                transforms.Resize((self.image_size*1.15, self.image_size*1.15)),
+                transforms.CenterCrop(self.image_size),
                 transforms.ToTensor(),
             ]
 
