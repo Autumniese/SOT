@@ -22,6 +22,8 @@ class CategoriesSampler:
             ind = torch.from_numpy(ind)
             self.m_ind.append(ind)
 
+        print(self.m_ind)
+        
         # for c in classes:
         #     l = self.m_ind[c.item()]
         #     pos = torch.randperm(l.size()[0])
