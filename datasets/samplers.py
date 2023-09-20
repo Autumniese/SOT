@@ -16,13 +16,13 @@ class CategoriesSampler:
         self.batches = []
 
         labels = np.array(labels)
-        # print(labels)
+        print(labels)
         for i in range(max(labels) + 1):
             ind = np.argwhere(labels == i).reshape(-1)
             ind = torch.from_numpy(ind)
             self.m_ind.append(ind)
 
-        # print(self.m_ind)
+        print(self.m_ind)
 
         # for c in classes:
         #     l = self.m_ind[c.item()]
