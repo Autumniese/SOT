@@ -179,7 +179,7 @@ def get_transform(img_size: int, split_name: str):
 
     else:
         return transforms.Compose([
-            transforms.Resize((img_size, img_size)),
+            # transforms.Resize((img_size, img_size)),
             transforms.ToTensor(),
             normalize
         ])
