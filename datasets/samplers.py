@@ -22,6 +22,8 @@ class CategoriesSampler:
             ind = torch.from_numpy(ind)
             self.m_ind.append(ind)
 
+        self.m_mind = [tensor for tensor in self.m_mind if tensor.numel() > 0]
+        
         print(self.m_ind)
 
         # for c in classes:
@@ -47,7 +49,8 @@ class CategoriesSampler:
                     batch.append(l[pos[: self.num_shot + self.num_query]])
                 print(batch)
 
-                batch = torch.stack(batch).t().reshape(-1)
+                # batch = torch.stack(batch).t().reshape(-1)
+                batch = batch[torch.randperm(len(batch))]
                 self.batches.append(batch)
 
     def __len__(self):
