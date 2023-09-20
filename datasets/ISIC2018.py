@@ -34,12 +34,12 @@ class ISIC2018(Dataset):
         super(ISIC2018, self).__init__()
 
         if setname == "train":
-            setname = "Training"
+            set_name = "Training"
 
         # Fetch CSV
         self.csv_path = os.path.join(
             data_path,
-            f"ISIC2018_Task3_{setname}_GroundTruth.csv"
+            f"ISIC2018_Task3_{set_name}_GroundTruth.csv"
         )
         assert os.path.isfile(self.csv_path), f"CSV file was not found at {self.csv_path}"
 
@@ -51,7 +51,7 @@ class ISIC2018(Dataset):
         assert os.path.isfile(self.csv_path), f"CSV file was not found at {self.csv_path}"
         self.img_concrete_path = os.path.join(
             self.img_base_path,
-            f"ISIC2018_Task3_{setname}_Input/ISIC2018_Task3_{setname}_Input/"
+            f"ISIC2018_Task3_{set_name}_Input/ISIC2018_Task3_{setname}_Input/"
         )
         assert os.path.isdir(self.img_concrete_path), f"Could not find valid data path at {self.img_concrete_path}"
 
@@ -66,10 +66,7 @@ class ISIC2018(Dataset):
             lambda idx: self.get_sparse_label(self.csv_df, idx),
             range(len(self.csv_df))
         ))
-        print(f"Getting '{setname}' data from {self.img_concrete_path}")
-
-        if setname == 'Training':
-            setname = 'train'
+        print(f"Getting '{set_name}' data from {self.img_concrete_path}")
             
         mean = [0.485, 0.456, 0.406]
         std = [0.229, 0.224, 0.225]
