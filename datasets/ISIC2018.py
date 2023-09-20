@@ -73,7 +73,7 @@ class ISIC2018(Dataset):
         normalize = transforms.Normalize(mean=mean,std=std)
         
         self.image_size=img_size
-        if augment and setname=='train':
+        if augment and setname=='Training':
             transforms_list = [
                 transforms.RandomResizedCrop(self.image_size),
                 transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
