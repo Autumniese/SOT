@@ -85,7 +85,7 @@ class ISIC2018(Dataset):
             ]
         else:
             transforms_list = [
-                transforms.Resize((self.image_size*1.15, self.image_size*1.15), antialias=True),
+                transforms.Resize((self.image_size, self.image_size), antialias=True),
                 transforms.CenterCrop(self.image_size),
                 transforms.ToTensor(),
             ]
@@ -163,23 +163,23 @@ class ISIC2018(Dataset):
                 return ISIC2018.class_id_map.get(classlabel)
         return -1
     
-def get_transform(img_size: int, split_name: str):
-    mean = [0.485, 0.456, 0.406]
-    std = [0.229, 0.224, 0.225]
-    normalize = transforms.Normalize(mean=mean, std=std)
+# def get_transform(img_size: int, split_name: str):
+#     mean = [0.485, 0.456, 0.406]
+#     std = [0.229, 0.224, 0.225]
+#     normalize = transforms.Normalize(mean=mean, std=std)
 
-    if split_name == 'train':
-        return transforms.Compose([
-            transforms.RandomResizedCrop(size=(img_size, img_size), antialias=True),
-            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize
-        ])
+#     if split_name == 'train':
+#         return transforms.Compose([
+#             transforms.RandomResizedCrop(size=(img_size, img_size), antialias=True),
+#             transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+#             transforms.RandomHorizontalFlip(),
+#             transforms.ToTensor(),
+#             normalize
+#         ])
 
-    else:
-        return transforms.Compose([
-            transforms.Resize((img_size, img_size)),
-            transforms.ToTensor(),
-            normalize
-        ])
+#     else:
+#         return transforms.Compose([
+#             transforms.Resize((img_size, img_size)),
+#             transforms.ToTensor(),
+#             normalize
+#         ])
