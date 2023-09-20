@@ -36,7 +36,7 @@ class ISIC2018(Dataset):
         if setname == "train":
             set_name = "Training"
         else:
-            pass
+            set_name = setname
 
         # Fetch CSV
         self.csv_path = os.path.join(
