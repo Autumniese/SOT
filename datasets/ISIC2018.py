@@ -51,7 +51,7 @@ class ISIC2018(Dataset):
         assert os.path.isfile(self.csv_path), f"CSV file was not found at {self.csv_path}"
         self.img_concrete_path = os.path.join(
             self.img_base_path,
-            f"ISIC2018_Task3_{set_name}_Input/ISIC2018_Task3_{setname}_Input/"
+            f"ISIC2018_Task3_{set_name}_Input/ISIC2018_Task3_{set_name}_Input/"
         )
         assert os.path.isdir(self.img_concrete_path), f"Could not find valid data path at {self.img_concrete_path}"
 
