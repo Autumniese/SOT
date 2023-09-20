@@ -78,14 +78,14 @@ class ISIC2018(Dataset):
         self.image_size=img_size
         if augment and setname=='train':
             transforms_list = [
-                transforms.RandomResizedCrop(self.image_size),
+                transforms.RandomResizedCrop((self.image_size,self.image_size), antialias=True),
                 transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
             ]
         else:
             transforms_list = [
-                transforms.Resize((self.image_size*1.15, self.image_size*1.15)),
+                transforms.Resize((self.image_size*1.15, self.image_size*1.15), antialias=True),
                 transforms.CenterCrop(self.image_size),
                 transforms.ToTensor(),
             ]
@@ -170,7 +170,7 @@ def get_transform(img_size: int, split_name: str):
 
     if split_name == 'train':
         return transforms.Compose([
-            # transforms.RandomResizedCrop(size=(img_size, img_size), antialias=True),
+            transforms.RandomResizedCrop(size=(img_size, img_size), antialias=True),
             transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -179,7 +179,7 @@ def get_transform(img_size: int, split_name: str):
 
     else:
         return transforms.Compose([
-            # transforms.Resize((img_size, img_size)),
+            transforms.Resize((img_size, img_size)),
             transforms.ToTensor(),
             normalize
         ])
