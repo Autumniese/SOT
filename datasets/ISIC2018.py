@@ -119,8 +119,8 @@ class ISIC2018(Dataset):
 
         # read data
         try:
-            # img_data = io.read_image(img_path).float()
-            img_data = Image.open(img_path).convert('RGB').float()
+            img_data = io.read_image(img_path).float()
+            # img_data = Image.open(img_path).convert('RGB').float()
         except Exception as e:
             print("Error when trying to read data file:", e)
             return None
