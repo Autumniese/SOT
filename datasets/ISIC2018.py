@@ -78,7 +78,7 @@ class ISIC2018(Dataset):
         self.image_size=img_size
         if augment and setname=='train':
             transforms_list = [
-                transforms.ToPILImage(),
+                # transforms.ToPILImage(),
                 transforms.RandomResizedCrop((self.image_size,self.image_size), antialias=True),
                 transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
                 transforms.RandomHorizontalFlip(),
