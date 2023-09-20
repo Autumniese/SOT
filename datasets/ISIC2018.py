@@ -86,7 +86,7 @@ class ISIC2018(Dataset):
             ]
         else:
             transforms_list = [
-                transforms.ToPILImage(),
+                # transforms.ToPILImage(),
                 transforms.Resize((self.image_size, self.image_size), antialias=True),
                 transforms.CenterCrop(self.image_size),
                 transforms.ToTensor(),
@@ -121,8 +121,8 @@ class ISIC2018(Dataset):
 
         # read data
         try:
-            img_data = torchvision.io.read_image(img_path).float()
-            # img_data = Image.open(img_path).convert('RGB').float()
+            # img_data = torchvision.io.read_image(img_path).float()
+            img_data = Image.open(img_path)
         except Exception as e:
             print("Error when trying to read data file:", e)
             return None
