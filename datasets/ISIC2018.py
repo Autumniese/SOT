@@ -170,7 +170,7 @@ def get_transform(img_size: int, split_name: str):
 
     if split_name == 'train':
         return transforms.Compose([
-            transforms.RandomResizedCrop((img_size, img_size)),
+            transforms.RandomResizedCrop(size=(img_size, img_size), antialias=True),
             transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -179,7 +179,7 @@ def get_transform(img_size: int, split_name: str):
 
     else:
         return transforms.Compose([
-            transforms.Resize((img_size, img_size)),
+            transforms.Resize(size=(img_size, img_size), antialias=True),
             transforms.ToTensor(),
             normalize
         ])
