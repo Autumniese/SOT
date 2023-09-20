@@ -78,7 +78,6 @@ class ISIC2018(Dataset):
         self.image_size=img_size
         if augment and setname=='train':
             transforms_list = [
-                # transforms.ToPILImage(),
                 transforms.RandomResizedCrop((self.image_size,self.image_size), antialias=True),
                 transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
                 transforms.RandomHorizontalFlip(),
@@ -86,7 +85,6 @@ class ISIC2018(Dataset):
             ]
         else:
             transforms_list = [
-                # transforms.ToPILImage(),
                 transforms.Resize((self.image_size, self.image_size), antialias=True),
                 transforms.CenterCrop(self.image_size),
                 transforms.ToTensor(),
@@ -122,7 +120,7 @@ class ISIC2018(Dataset):
         # read data
         try:
             # img_data = torchvision.io.read_image(img_path).float()
-            img_data = Image.open(img_path)
+            img_data = Image.open(img_path).convert('RGB')
         except Exception as e:
             print("Error when trying to read data file:", e)
             return None
