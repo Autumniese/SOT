@@ -19,10 +19,11 @@ class CategoriesSampler:
         for i in range(max(labels) + 1):
             ind = np.argwhere(labels == i).reshape(-1)
             ind = torch.from_numpy(ind)
-            self.m_ind.append(ind)
+            if ind.numel() > 0
+                self.m_ind.append(ind)
 
         # drop empty labels
-        self.m_ind = [tensor for tensor in self.m_ind if tensor.numel() > 0]
+        # self.m_ind = [tensor for tensor in self.m_ind if tensor.numel() > 0]
         
         # for c in classes:
         #     l = self.m_ind[c.item()]
