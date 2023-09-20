@@ -16,6 +16,7 @@ class CategoriesSampler:
         self.batches = []
 
         labels = np.array(labels)
+        print(labels)
         for i in range(max(labels) + 1):
             ind = np.argwhere(labels == i).reshape(-1)
             ind = torch.from_numpy(ind)
@@ -36,7 +37,6 @@ class CategoriesSampler:
         if self.const_loader:
             for i_batch in range(self.num_episodes):
                 batch = []
-                print(batch)
                 classes = torch.randperm(len(self.m_ind))[:self.num_way]
                 print(classes)
                 for c in classes:
