@@ -21,11 +21,7 @@ class CategoriesSampler:
             ind = np.argwhere(labels == i).reshape(-1)
             ind = torch.from_numpy(ind)
             self.m_ind.append(ind)
-
-        self.m_ind = [tensor for tensor in self.m_ind if tensor.numel() > 0]
         
-        print(self.m_ind)
-
         # for c in classes:
         #     l = self.m_ind[c.item()]
         #     pos = torch.randperm(l.size()[0])
@@ -39,6 +35,9 @@ class CategoriesSampler:
         # self.batches.append(batch)
 
         if self.const_loader:
+            # drop empty labels
+            self.m_ind = [tensor for tensor in self.m_ind if tensor.numel() > 0]
+            
             for i_batch in range(self.num_episodes):
                 batch = []
                 classes = torch.randperm(len(self.m_ind))[:self.num_way]
@@ -49,8 +48,7 @@ class CategoriesSampler:
                     batch.append(l[pos[: self.num_shot + self.num_query]])
                 print(batch)
 
-                # batch = torch.stack(batch).t().reshape(-1)
-                batch = batch[torch.randperm(len(batch))]
+                batch = torch.stack(batch).t().reshape(-1)
                 self.batches.append(batch)
 
     def __len__(self):
