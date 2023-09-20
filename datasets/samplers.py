@@ -23,12 +23,16 @@ class CategoriesSampler:
             self.m_ind.append(ind)
 
         # print(self.m_ind)
-        
-        for c in classes:
-            l = self.m_ind[c.item()]
-            pos = torch.randperm(l.size()[0])
-            batch_gallery.append(l[pos[: self.num_shot + self.num_query]])
-            batch_query.append(l[pos[self.num_shot: self.num_shot + self.num_query]])
+
+        if self.const_loader:
+            for i_batch in range(self.num_episodes):
+                batch = []
+                classes = torch.randperm(len(self.m_ind))[:self.num_way]
+                for c in classes:
+                    l = self.m_ind[c.item()]
+                    pos = torch.randperm(l.size()[0])
+                    batch_gallery.append(l[pos[: self.num_shot + self.num_query]])
+                    batch_query.append(l[pos[self.num_shot: self.num_shot + self.num_query]])
         
         # batch = torch.cat(batch_gallery + batch_query)
         batch_gallery = torch.cat(batch_gallery).reshape(self.num_way, self.num_shot).T.reshape(-1)
