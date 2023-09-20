@@ -68,12 +68,15 @@ class ISIC2018(Dataset):
         ))
         print(f"Getting '{setname}' data from {self.img_concrete_path}")
 
+        if setname == 'Training':
+            setname = 'train'
+            
         mean = [0.485, 0.456, 0.406]
         std = [0.229, 0.224, 0.225]
         normalize = transforms.Normalize(mean=mean,std=std)
         
         self.image_size=img_size
-        if augment and setname=='Training':
+        if augment and setname=='train':
             transforms_list = [
                 transforms.RandomResizedCrop(self.image_size),
                 transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
