@@ -19,7 +19,7 @@ class ISIC2018(Dataset):
         VASC = 6
     )
 
-    def __init__(self, data_path: str, setname: str, backbone: str, augment: bool, img_size=224, img_ext='jpg', transform=None, target_transform=None):
+    def __init__(self, data_path: str, setname: str, backbone: str, augment: bool, img_size=84, img_ext='jpg', transform=None, target_transform=None):
         
         """
         Initialize the Dataset
@@ -77,7 +77,7 @@ class ISIC2018(Dataset):
         self.image_size=img_size
         if augment and setname=='train':
             transforms_list = [
-                transforms.RandomResizedCrop((self.image_size,self.image_size), antialias=True),
+                transforms.Resize((self.image_size,self.image_size), antialias=True),
                 transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
