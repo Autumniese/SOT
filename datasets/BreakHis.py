@@ -110,6 +110,8 @@ class BreakHis(Dataset):
             )
         )
 
+        img_label = self.get_sparse_label(self.csv_df, idx)
+
         # read data
         try:
             img_data = Image.open(img_path).convert('RGB')
