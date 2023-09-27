@@ -84,7 +84,8 @@ class BreakHis(Dataset):
         self.transform = transforms.Compose(
             transforms_list + [normalize]
         )
-    
+        self.target_transform = target_transform
+
     def __len__(self):
         return len(self.csv_df)
     
