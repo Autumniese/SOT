@@ -13,7 +13,7 @@ class BreakHis(Dataset):
     class_id_map = dict(
         adenosis = 0,
         tubular_adenoma = 1,
-        phyllodes_tumor = 2
+        phyllodes_tumor = 2,
         fibroadenoma = 3,
         papillary_carcinoma = 4,
         ductal_carcinoma = 5,
