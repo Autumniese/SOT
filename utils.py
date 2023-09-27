@@ -11,7 +11,7 @@ from scipy.optimize import linear_sum_assignment as linear_assignment
 
 from models.wrn_mixup_model import wrn28_10
 from models.resnet12 import Res12
-from datasets import MiniImageNet, CIFAR, CUB, ISIC2018
+from datasets import MiniImageNet, CIFAR, CUB, ISIC2018, BreakHis
 from datasets.samplers import CategoriesSampler
 from methods import PTMAPLoss, ProtoLoss
 from self_optimal_transport import SOT
