@@ -104,9 +104,8 @@ class BreakHis(Dataset):
 
         img_path = os.path.join(
             self.img_concrete_path,
-            "{0}.{1}".format(
-                self.csv_df.iloc[idx,3],
-                self.img_frmt_ext
+            "{0}".format(
+                self.csv_df.iloc[idx,3]
             )
         )
 
