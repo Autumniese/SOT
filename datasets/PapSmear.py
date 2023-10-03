@@ -1,7 +1,6 @@
 import os
 from PIL import Image
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder
 
 import torch
 import torchvision
