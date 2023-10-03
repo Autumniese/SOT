@@ -7,7 +7,7 @@ import torchvision
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-class BreakHis(Dataset):
+class PapSmear(Dataset):
 
     def __init__(self, data_path: str, setname:str, backbone: str, augment: bool):
         d = os.path.join(data_path, setname)
