@@ -12,7 +12,7 @@ def get_args():
 
     # global args
     parser.add_argument('--seed', type=int, default=1)
-    parser.add_argument('--dataset', type=str, default='miniimagenet', choices=['miniimagenet', 'cifar', 'isic2018', 'breakhis', 'papsmear'])
+    parser.add_argument('--dataset', type=str, default='miniimagenet', choices=['miniimagenet', 'cifar', 'isic2018', 'breakhis', 'papsmear','blood'])
     parser.add_argument('--data_path', type=str, default='./datasets/few_shot/miniimagenet')
     parser.add_argument('--method', type=str, default='pt_map_sot',
                         choices=['pt_map', 'pt_map_sot', 'proto', 'proto_sot'],
