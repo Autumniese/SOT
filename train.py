@@ -191,7 +191,7 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
     model.train()
     results = {'train/accuracy': 0, 'train/loss': 0}
     start = time()
-    for batch_idx, (inputs, target) in enumerate(loader):
+    for batch_idx, (inputs, target) in enumerate(loader, 1):
         inputs = inputs.cuda()
         features = model(inputs,ssl = False)
         # apply few_shot method
