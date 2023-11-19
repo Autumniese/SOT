@@ -191,18 +191,18 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
     model.train()
     results = {'train/accuracy': 0, 'train/loss': 0}
     start = time()
-    for batch_idx, (inputs, target) in enumerate(loader, 1):
-        inputs = inputs.cuda()
-        features = model(inputs,ssl = False)
+    for batch_idx, batch in enumerate(loader):
+        images  = batch[0].cuda()
+        features = model(images,ssl = False)
         # apply few_shot method
         probas, accuracy = method(features, labels=labels, mode='train')
         q_labels = labels if len(labels) == len(probas) else labels[-len(probas):]
 
         # Self-supervised constrastive learning
-        target = target.cuda()
+        target = batch[1].cuda()
 
         # ssl content   
-        inputs = preprocess_data(inputs['data'])
+        inputs = preprocess_data(batch[0]['data'])
         target = target.repeat(4)
         batch_size = args.num_shot + args.num_query
 
