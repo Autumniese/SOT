@@ -271,6 +271,7 @@ class ResNet2d(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
+        x = F.relu(x)
         if self.keep_avg_pool:
             x = self.avgpool(x)
         feat = x.view(x.size(0), -1)
