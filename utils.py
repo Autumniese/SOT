@@ -32,7 +32,7 @@ def get_model(model_name: str, args):
         if 'vit' in arch:
             model = models[arch](img_size=args.img_size, patch_size=16)
         elif arch == 'resnet12_2d':
-            model = models[arch](dropout=args.dropout, avg_pool=True, drop_rate=0.1, dropblock_size=2, num_classes=n_cls[args.dataset])
+            model = models[arch](avg_pool=True, drop_rate=0.1, dropblock_size=2, num_classes=n_cls[args.dataset])
         else:
             model = models[arch](dropout=args.dropout)
 
