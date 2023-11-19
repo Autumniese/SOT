@@ -128,7 +128,7 @@ def main():
     # evaluate model before training
     if args.eval_first:
         print("Evaluate model before training... ")
-        eval_one_epoch(model, args.bath val_loader, method, criterion, val_labels, logger, 0, set_name='val')
+        eval_one_epoch(model, val_loader, method, criterion, val_labels, logger, 0, set_name='val')
 
     # main loop
     print("Start training...")
