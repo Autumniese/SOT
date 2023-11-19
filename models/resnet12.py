@@ -198,8 +198,9 @@ class ResNet(nn.Module):
 
 class ResNet2d(nn.Module):
 
-    def __init__(self, block, n_blocks, keep_prob=1.0, avg_pool=False, drop_rate=0.0,
+    def __init__(self, block, n_blocks, keep_prob=1.0, avg_pool=False, dropout=0.0,
                  dropblock_size=5, num_classes=-1, use_se=False):
+        drop_rate = dropout
         super(ResNet2d, self).__init__()
 
         self.inplanes = 3
