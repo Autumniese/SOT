@@ -17,7 +17,7 @@ from methods import PTMAPLoss, ProtoLoss
 from self_optimal_transport import SOT
 
 
-models = dict(wrn=wrn28_10, resnet12=Res12, resnet12_2D = Res12_2D)
+models = dict(wrn=wrn28_10, resnet12=Res12, resnet12_2d = Res12_2D)
 datasets = dict(miniimagenet=MiniImageNet, cifar=CIFAR, isic2018=ISIC2018, breakhis=BreakHis, papsmear=PapSmear, blood=Blood)
 n_cls = dict(isic2018=7,breakhis=8,papsmear=7,blood=11)
 methods = dict(pt_map=PTMAPLoss, pt_map_sot=PTMAPLoss, proto=ProtoLoss, proto_sot=ProtoLoss, )
@@ -31,7 +31,7 @@ def get_model(model_name: str, args):
     if arch in models.keys():
         if 'vit' in arch:
             model = models[arch](img_size=args.img_size, patch_size=16)
-        elif arch == 'resnet12_2D':
+        elif arch == 'resnet12_2d':
             model = models[arch](dropout=args.dropout, avg_pool=True, drop_rate=0.1, dropblock_size=2, num_classes=n_cls[args.dataset])
         else:
             model = models[arch](dropout=args.dropout)
