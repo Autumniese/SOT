@@ -216,6 +216,7 @@ class ResNet2d(nn.Module):
                                        stride=2, drop_rate=drop_rate, drop_block=True, block_size=dropblock_size)
         self.layer4 = self._make_layer(block, n_blocks[3], 640,
                                        stride=2, drop_rate=drop_rate, drop_block=True, block_size=dropblock_size)
+        self.relu = nn.ReLU(inplace=True)
         if avg_pool:
             # self.avgpool = nn.AvgPool2d(5, stride=1)
             self.avgpool = nn.AdaptiveAvgPool2d(1)
@@ -270,6 +271,7 @@ class ResNet2d(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
+        x = self.relu(x)
         if self.keep_avg_pool:
             x = self.avgpool(x)
         feat = x.view(x.size(0), -1)
