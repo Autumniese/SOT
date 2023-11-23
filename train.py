@@ -202,6 +202,7 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
         target = batch[1].cuda()
 
         # ssl content   
+        print(batch[0])
         inputs = preprocess_data(batch[0])
         target = target.repeat(4)
         batch_size = args.num_shot + args.num_query
