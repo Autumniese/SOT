@@ -157,7 +157,9 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
     results = {'train/accuracy': 0, 'train/loss': 0}
     start = time()
     for batch_idx, batch in enumerate(loader):
-        images  = batch[0].cuda()
+        print(batch)
+        
+        images  = batch[0].cudak()
         features = model(images)
         # apply few_shot method
         probas, accuracy = method(features, labels=labels, mode='train')
