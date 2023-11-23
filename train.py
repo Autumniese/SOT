@@ -171,6 +171,7 @@ def preprocess_data(data):
     for idxx, img in enumerate(data):
         # 4,3,84,84
         x = img.data[0].unsqueeze(0)
+        print(x)
         x90 = img.data[1].unsqueeze(0).transpose(2,3).flip(2)
         x180 = img.data[2].unsqueeze(0).flip(2).flip(3)
         x270 = img.data[3].unsqueeze(0).flip(2).transpose(2,3)
@@ -202,7 +203,6 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
         target = batch[1].cuda()
 
         # ssl content   
-        print(batch[0])
         inputs = preprocess_data(batch[0])
         target = target.repeat(4)
         batch_size = args.num_shot + args.num_query
