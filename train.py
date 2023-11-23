@@ -156,10 +156,10 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
     model.train()
     results = {'train/accuracy': 0, 'train/loss': 0}
     start = time()
-    for batch_idx, batch in enumerate(loader):
-        print(batch)
-        
-        images  = batch[0].cudak()
+    for batch_idx, (input, target) in enumerate(loader):
+        print(input)
+        print(target)
+        images  = input.cudak()
         features = model(images)
         # apply few_shot method
         probas, accuracy = method(features, labels=labels, mode='train')
