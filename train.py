@@ -156,7 +156,7 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
     model.train()
     results = {'train/accuracy': 0, 'train/loss': 0}
     start = time()
-    for batch_idx, (input, target) in enumerate(loader):
+    for batch_idx, (input, target,_) in enumerate(loader):
         print(input)
         print(target)
         images  = input.cudak()
