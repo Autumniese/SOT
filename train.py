@@ -60,10 +60,6 @@ def get_args():
     parser.add_argument('--temperature', type=float, default=0.1, help=""" Temperature for ProtoNet. """)
     parser.add_argument('--dropout', type=float, default=0., help=""" Dropout probability. """)
 
-    # ssl
-    parser.add_argument('--gamma-rot', type=float, default=0.0)
-    parser.add_argument('--gamma-dist', type=float, default=0.0)
-
     # SOT args
     parser.add_argument('--ot_reg', type=float, default=0.1,
                         help=""" Entropy regularization. For few-shot methods, 0.1-0.2 works best. """)
@@ -156,84 +152,18 @@ def main():
         torch.save(model.state_dict(), f'{out_dir}/checkpoint_last.pth')
 
 
-def dist_loss(data, batch_size):
-    d_90 = data[batch_size:2*batch_size] - data[:batch_size]
-    loss_a = torch.mean(torch.sqrt(torch.sum((d_90)**2, dim=1)))
-    d_180 = data[2*batch_size:3*batch_size] - data[:batch_size]
-    loss_a += torch.mean(torch.sqrt(torch.sum((d_180)**2, dim=1)))
-    d_270 = data[3*batch_size:4*batch_size] - data[:batch_size]
-    loss_a += torch.mean(torch.sqrt(torch.sum((d_270)**2, dim=1)))
-
-    return loss_a
-
-
-def preprocess_data(data):
-    for idxx, img in enumerate(data):
-        # 4,3,84,84
-        x = img.data[0].unsqueeze(0)
-        print(img.data[1])
-        x90 = img.data[1].unsqueeze(0).transpose(2,3).flip(2)
-        x180 = img.data[2].unsqueeze(0).flip(2).flip(3)
-        x270 = img.data[3].unsqueeze(0).flip(2).transpose(2,3)
-        if idxx <= 0:
-            xlist = x
-            x90list = x90
-            x180list = x180
-            x270list = x270
-        else:
-            xlist = torch.cat((xlist, x), 0)
-            x90list = torch.cat((x90list, x90), 0)
-            x180list = torch.cat((x180list, x180), 0)
-            x270list = torch.cat((x270list, x270), 0)
-    # combine
-    return torch.cat((xlist, x90list, x180list, x270list), 0).cuda()
-
 def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger, log_step, epoch, args):
     model.train()
     results = {'train/accuracy': 0, 'train/loss': 0}
     start = time()
     for batch_idx, batch in enumerate(loader):
         images  = batch[0].cuda()
-        features = model(images,ssl = False)
+        features = model(images)
         # apply few_shot method
         probas, accuracy = method(features, labels=labels, mode='train')
         q_labels = labels if len(labels) == len(probas) else labels[-len(probas):]
 
-        # Self-supervised constrastive learning
-        target = batch[1].cuda()
-
-        # ssl content   
-        inputs = preprocess_data(batch[0])
-        target = target.repeat(4)
-        batch_size = args.num_shot + args.num_query
-
-        rot_labels = torch.zeros(4*batch_size).cuda().long()
-        for i in range(4*batch_size):
-            if i < batch_size:
-                rot_labels[i] = 0
-            elif i < 2*batch_size:
-                rot_labels[i] = 1
-            elif i < 3*batch_size:
-                rot_labels[i] = 2
-            else:
-                rot_labels[i] = 3
-
-
-        _, train_logit, rot_logits = model(inputs, ssl=True)
-        rot_labels = F.one_hot(rot_labels.to(torch.int64), 4).float()
-        # rotation loss
-        loss_rot = torch.sum(F.binary_cross_entropy_with_logits(
-            input=rot_logits, target=rot_labels))
-        loss_rot = args.gamma_rot * loss_rot
-         # distance loss
-        loss_dist = dist_loss(train_logit, batch_size)
-        if(torch.isnan(loss_dist).any()):
-            print("Skip this loop")
-            break
-        loss_dist = args.gamma_dist * (loss_dist / 3.0)
-
-        # loss = loss ce + loss rot + loss dist
-        loss = criterion(probas, q_labels) + loss_rot + loss_dist
+        loss = criterion(probas, q_labels)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
