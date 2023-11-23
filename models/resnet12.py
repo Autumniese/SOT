@@ -1,96 +1,23 @@
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-from torch.distributions import Bernoulli
 from .dropblock import DropBlock
 
 # This ResNet network was designed following the practice of the following papers:
 # TADAM: Task dependent adaptive metric for improved few-shot learning (Oreshkin et al., in NIPS 2018) and
 # A Simple Neural Attentive Meta-Learner (Mishra et al., in ICLR 2018).
 
+
 def conv3x3(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
 
-class SELayer(nn.Module):
-    def __init__(self, channel, reduction=16):
-        super(SELayer, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-                nn.Linear(channel, channel // reduction),
-                nn.ReLU(inplace=True),
-                nn.Linear(channel // reduction, channel),
-                nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x).view(b, c)
-        y = self.fc(y).view(b, c, 1, 1)
-        return x * y
-
-
-class DropBlock(nn.Module):
-    def __init__(self, block_size):
-        super(DropBlock, self).__init__()
-
-        self.block_size = block_size
-        #self.gamma = gamma
-        #self.bernouli = Bernoulli(gamma)
-
-    def forward(self, x, gamma):
-        # shape: (bsize, channels, height, width)
-
-        if self.training:
-            batch_size, channels, height, width = x.shape
-            
-            bernoulli = Bernoulli(gamma)
-            mask = bernoulli.sample((batch_size, channels, height - (self.block_size - 1), width - (self.block_size - 1))).cuda()
-            block_mask = self._compute_block_mask(mask)
-            countM = block_mask.size()[0] * block_mask.size()[1] * block_mask.size()[2] * block_mask.size()[3]
-            count_ones = block_mask.sum()
-
-            return block_mask * x * (countM / count_ones)
-        else:
-            return x
-
-    def _compute_block_mask(self, mask):
-        left_padding = int((self.block_size-1) / 2)
-        right_padding = int(self.block_size / 2)
-        
-        batch_size, channels, height, width = mask.shape
-        #print ("mask", mask[0][0])
-        non_zero_idxs = mask.nonzero()
-        nr_blocks = non_zero_idxs.shape[0]
-
-        offsets = torch.stack(
-            [
-                torch.arange(self.block_size).view(-1, 1).expand(self.block_size, self.block_size).reshape(-1), # - left_padding,
-                torch.arange(self.block_size).repeat(self.block_size), #- left_padding
-            ]
-        ).t().cuda()
-        offsets = torch.cat((torch.zeros(self.block_size**2, 2).cuda().long(), offsets.long()), 1)
-        
-        if nr_blocks > 0:
-            non_zero_idxs = non_zero_idxs.repeat(self.block_size ** 2, 1)
-            offsets = offsets.repeat(nr_blocks, 1).view(-1, 4)
-            offsets = offsets.long()
-
-            block_idxs = non_zero_idxs + offsets
-            #block_idxs += left_padding
-            padded_mask = F.pad(mask, (left_padding, right_padding, left_padding, right_padding))
-            padded_mask[block_idxs[:, 0], block_idxs[:, 1], block_idxs[:, 2], block_idxs[:, 3]] = 1.
-        else:
-            padded_mask = F.pad(mask, (left_padding, right_padding, left_padding, right_padding))
-            
-        block_mask = 1 - padded_mask#[:height, :width]
-        return block_mask
 
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None, drop_rate=0.0, drop_block=False, block_size=1, use_se=False):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, drop_rate=0.0, drop_block=False, block_size=1):
         super(BasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -107,10 +34,6 @@ class BasicBlock(nn.Module):
         self.drop_block = drop_block
         self.block_size = block_size
         self.DropBlock = DropBlock(block_size=self.block_size)
-        self.use_se = use_se
-        if self.use_se:
-            self.se = SELayer(planes, 4)
-
 
     def forward(self, x):
         self.num_batches_tracked += 1
