@@ -7,9 +7,6 @@ from .dropblock import DropBlock
 # This ResNet network was designed following the practice of the following papers:
 # TADAM: Task dependent adaptive metric for improved few-shot learning (Oreshkin et al., in NIPS 2018) and
 # A Simple Neural Attentive Meta-Learner (Mishra et al., in ICLR 2018).
-# SCL: Self-supervised contrastive learning for few-shot image classification
-
-# ======== 2D RESNET ===========
 
 def conv3x3(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
@@ -200,104 +197,8 @@ class ResNet(nn.Module):
         return x
 
 
-class ResNet2d(nn.Module):
-
-    def __init__(self, block, n_blocks, keep_prob=1.0, avg_pool=False, drop_rate=0.0,
-                 dropblock_size=5, num_classes=-1, use_se=False):
-        super(ResNet2d, self).__init__()
-
-        self.inplanes = 3
-        self.use_se = use_se
-        self.layer1 = self._make_layer(block, n_blocks[0], 64,
-                                       stride=2, drop_rate=drop_rate)
-        self.layer2 = self._make_layer(block, n_blocks[1], 160,
-                                       stride=2, drop_rate=drop_rate)
-        self.layer3 = self._make_layer(block, n_blocks[2], 320,
-                                       stride=2, drop_rate=drop_rate, drop_block=True, block_size=dropblock_size)
-        self.layer4 = self._make_layer(block, n_blocks[3], 640,
-                                       stride=2, drop_rate=drop_rate, drop_block=True, block_size=dropblock_size)
-        self.relu = nn.ReLU(inplace=True)
-        if avg_pool:
-            # self.avgpool = nn.AvgPool2d(5, stride=1)
-            self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.keep_prob = keep_prob
-        self.keep_avg_pool = avg_pool
-        self.dropout = nn.Dropout(p=1 - self.keep_prob, inplace=False)
-        self.drop_rate = drop_rate
-        
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
-        self.num_classes = num_classes
-        if self.num_classes > 0:
-            self.classifier = nn.Linear(640, self.num_classes)
-            # ssl
-            self.rot_classifier = nn.Linear(640, 4)
-        self.droplayer = nn.Dropout(0.2)
-
-    def _make_layer(self, block, n_block, planes, stride=1, drop_rate=0.0, drop_block=False, block_size=1):
-        downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=1, bias=False),
-                nn.BatchNorm2d(planes * block.expansion),
-            )
-
-        layers = []
-        if n_block == 1:
-            layer = block(self.inplanes, planes, stride, downsample, drop_rate, drop_block, block_size, self.use_se)
-        else:
-            layer = block(self.inplanes, planes, stride, downsample, drop_rate, self.use_se)
-        layers.append(layer)
-        self.inplanes = planes * block.expansion
-
-        for i in range(1, n_block):
-            if i == n_block - 1:
-                layer = block(self.inplanes, planes, drop_rate=drop_rate, drop_block=drop_block,
-                              block_size=block_size, use_se=self.use_se)
-            else:
-                layer = block(self.inplanes, planes, drop_rate=drop_rate, use_se=self.use_se)
-            layers.append(layer)
-
-        return nn.Sequential(*layers)
-
-    def forward(self, x, is_feat=False, ssl=False, drop=False):
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        if self.keep_avg_pool:
-            x = self.avgpool(x)
-        feat = x.view(x.size(0), -1)
-        if self.num_classes > 0:
-            x = feat
-            if drop:
-                x = self.droplayer(x)
-            x = self.classifier(x)
-            if ssl:
-                xy = self.rot_classifier(feat)
-                return feat, x, xy
-            
-            if is_feat:
-                return feat
-            else:
-                x = self.relu(x)
-                return x
-        else:
-            return feat
-
-
 def Res12(keep_prob=1.0, avg_pool=False, **kwargs):
     """Constructs a ResNet-12 model.
     """
     model = ResNet(BasicBlock, keep_prob=keep_prob, avg_pool=avg_pool, **kwargs)
-    return model
-
-def Res12_2D(keep_prob=1.0, avg_pool=False, **kwargs):
-    model = ResNet2d(BasicBlock, [1, 1, 1, 1], keep_prob=keep_prob, avg_pool=avg_pool, **kwargs)
     return model
