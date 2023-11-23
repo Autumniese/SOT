@@ -10,7 +10,7 @@ from sklearn.metrics import confusion_matrix
 from scipy.optimize import linear_sum_assignment as linear_assignment
 
 from models.wrn_mixup_model import wrn28_10
-from models.resnet12 import Res12, Res12_2D
+from models.resnet12 import Res12
 from datasets import MiniImageNet, CIFAR, CUB, ISIC2018, BreakHis, PapSmear, Blood
 from datasets.samplers import CategoriesSampler
 from methods import PTMAPLoss, ProtoLoss
