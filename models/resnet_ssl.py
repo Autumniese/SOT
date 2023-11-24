@@ -228,7 +228,8 @@ class ResNet(nn.Module):
         feat = x
         
         xx = self.classifier(x)
-        x = self.relu (x)
+        xx = self.relu (xx)
+
         
         if(rot):
 #             xy1 = self.rot_classifier1(xx)
