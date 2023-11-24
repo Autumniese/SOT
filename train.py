@@ -61,7 +61,7 @@ def get_args():
     parser.add_argument('--dropout', type=float, default=0., help=""" Dropout probability. """)
 
     # ssl args
-    parser.add_argument('--gamma', type=float, default=2, help='loss cofficient for ssl loss')
+    parser.add_argument('--ssl_gamma', type=float, default=2, help='loss cofficient for ssl loss')
 
     # SOT args
     parser.add_argument('--ot_reg', type=float, default=0.1,
@@ -136,7 +136,7 @@ def main():
     for epoch in range(1, args.max_epochs + 1):
         print(f"Epoch {epoch}/{args.max_epochs}: ")
         # train
-        train_one_epoch(model, train_loader, optimizer, method, criterion, train_labels, logger, args.log_step, epoch, args.gamma)
+        train_one_epoch(model, train_loader, optimizer, method, criterion, train_labels, logger, args.log_step, epoch, args.ssl_gamma)
         if scheduler is not None:
             scheduler.step()
 
@@ -155,7 +155,7 @@ def main():
         torch.save(model.state_dict(), f'{out_dir}/checkpoint_last.pth')
 
 
-def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger, log_step, epoch, gamma):
+def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger, log_step, epoch, ssl_gamma):
     model.train()
     results = {'train/accuracy': 0, 'train/loss': 0}
     start = time()
@@ -193,7 +193,7 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
         rot_labels = F.one_hot(rot_labels.to(torch.int64), 4).float()
         loss_ss = torch.sum(F.binary_cross_entropy_with_logits(input = rot_logits, target = rot_labels))
 
-        loss = gamma * loss_ss + criterion(probas, q_labels) 
+        loss = ssl_gamma * loss_ss + criterion(probas, q_labels) 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
