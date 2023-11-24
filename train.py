@@ -169,8 +169,8 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
         q_labels = labels if len(labels) == len(probas) else labels[-len(probas):]
 
         # ssl
-        batch_size = input.size()[0]
-        x = input
+        batch_size = images.size()[0]
+        x = images
         x_90 = x.transpose(2,3).flip(2)
         x_180 = x.flip(2).flip(3)
         x_270 = x.flip(2).transpose(2,3)
