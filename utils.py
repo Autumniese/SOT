@@ -18,7 +18,7 @@ from methods import PTMAPLoss, ProtoLoss
 from self_optimal_transport import SOT
 
 
-models = dict(wrn=wrn28_10, resnet12=Res12, sslresnet=resnet12_ssl)
+models = dict(wrn=wrn28_10, resnet12=Res12, resnet_ssl=resnet12_ssl)
 datasets = dict(miniimagenet=MiniImageNet, cifar=CIFAR, isic2018=ISIC2018, breakhis=BreakHis, papsmear=PapSmear, blood=Blood)
 n_cls = dict(isic2018=7, breakhis=8, papsmear=7, blood=11)
 methods = dict(pt_map=PTMAPLoss, pt_map_sot=PTMAPLoss, proto=ProtoLoss, proto_sot=ProtoLoss, )
