@@ -226,8 +226,9 @@ class ResNet(nn.Module):
             x = self.avgpool(x)
         x = x.view(x.size(0), -1)
         feat = x
-        x = self.relu (x)
+        
         xx = self.classifier(x)
+        x = self.relu (x)
         
         if(rot):
 #             xy1 = self.rot_classifier1(xx)
