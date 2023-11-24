@@ -162,7 +162,7 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
     for batch_idx, (input, target, _) in enumerate(loader):
 
         # Few-shot Classifier: PT-MAP SOT
-        images = input.cuda()
+        images, target = input.cuda(), target.cuda()
         features = model(images)
         # apply few_shot method
         probas, accuracy = method(features, labels=labels, mode='train')
