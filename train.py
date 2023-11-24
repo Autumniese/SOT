@@ -60,6 +60,9 @@ def get_args():
     parser.add_argument('--temperature', type=float, default=0.1, help=""" Temperature for ProtoNet. """)
     parser.add_argument('--dropout', type=float, default=0., help=""" Dropout probability. """)
 
+    # ssl args
+    parser.add_argument('--gamma', type=float, default=2, help='loss cofficient for ssl loss')
+
     # SOT args
     parser.add_argument('--ot_reg', type=float, default=0.1,
                         help=""" Entropy regularization. For few-shot methods, 0.1-0.2 works best. """)
@@ -133,7 +136,7 @@ def main():
     for epoch in range(1, args.max_epochs + 1):
         print(f"Epoch {epoch}/{args.max_epochs}: ")
         # train
-        train_one_epoch(model, train_loader, optimizer, method, criterion, train_labels, logger, args.log_step, epoch, args)
+        train_one_epoch(model, train_loader, optimizer, method, criterion, train_labels, logger, args.log_step, epoch, args.gamma)
         if scheduler is not None:
             scheduler.step()
 
@@ -152,20 +155,45 @@ def main():
         torch.save(model.state_dict(), f'{out_dir}/checkpoint_last.pth')
 
 
-def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger, log_step, epoch, args):
+def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger, log_step, epoch, gamma):
     model.train()
     results = {'train/accuracy': 0, 'train/loss': 0}
     start = time()
-    for batch_idx, (input, target,_) in enumerate(loader):
-        print(input)
-        print(target)
-        images  = input.cudak()
+    for batch_idx, (input, target, _) in enumerate(loader):
+
+        # Few-shot Classifier: PT-MAP SOT
+        images = input.cuda()
         features = model(images)
         # apply few_shot method
         probas, accuracy = method(features, labels=labels, mode='train')
         q_labels = labels if len(labels) == len(probas) else labels[-len(probas):]
 
-        loss = criterion(probas, q_labels)
+        # ssl
+        batch_size = input.size()[0]
+        x = input
+        x_90 = x.transpose(2,3).flip(2)
+        x_180 = x.flip(2).flip(3)
+        x_270 = x.flip(2).transpose(2,3)
+        generated_data = torch.cat((x,x_90,x_180,x_270))
+        train_targets = target.repeat(4)
+
+        rot_labels = torch.zeros(4*batch_size).cuda().long()
+        for i in range(4*batch_size):
+            if i < batch_size:
+                rot_labels[i] = 0
+            elif i < 2*batch_size:
+                rot_labels[i] = 1
+            elif i < 3*batch_size:
+                rot_labels[i] = 2
+            else:
+                rot_labels[i] = 3
+
+        # forward
+        (_,_,_,_, feat), (train_logit, rot_logits) = model(generated_data, rot=True)
+        rot_labels = F.one_hot(rot_labels.to(torch.int64), 4).float()
+        loss_ss = torch.sum(F.binary_cross_entropy_with_logits(input = rot_logits, target = rot_labels))
+
+        loss = gamma * loss_ss + criterion(probas, q_labels) 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
