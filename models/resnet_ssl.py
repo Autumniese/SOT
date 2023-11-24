@@ -169,6 +169,7 @@ class ResNet(nn.Module):
         self.keep_avg_pool = avg_pool
         self.dropout = nn.Dropout(p=1 - self.keep_prob, inplace=False)
         self.drop_rate = drop_rate
+        self.relu = nn.ReLU()
         
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -223,7 +224,7 @@ class ResNet(nn.Module):
         f3 = x
         if self.keep_avg_pool:
             x = self.avgpool(x)
-        x = self.relu(x)
+        x = self.relu (x)
         x = x.view(x.size(0), -1)
         feat = x
         
