@@ -597,6 +597,7 @@ class SSL_MedViT(nn.Module):
         self.norm = nn.BatchNorm2d(output_channel, eps=NORM_EPS)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.classifier = nn.Linear(216, self.num_classes)
         self.rot_classifier = nn.Linear(self.num_classes, 4)
         # final fc layer
         # self.proj_head = nn.Sequential(
@@ -639,8 +640,8 @@ class SSL_MedViT(nn.Module):
                 x = layer(x)
         x = self.norm(x)
         x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
         x = torch.flatten(x, 1)
+        print(x.shape)
         feat = x
         xx = self.proj_head(x)
 
