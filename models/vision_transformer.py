@@ -642,7 +642,8 @@ class SSL_MedViT(nn.Module):
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
         feat = x
-        xx = self.proj_head(x)
+        xx = self.classifier(x)
+        xx = self.proj_head(xx)
 
         if(rot):
             xy = self.rot_classifier(xx)
