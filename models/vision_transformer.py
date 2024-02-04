@@ -597,13 +597,15 @@ class SSL_MedViT(nn.Module):
         self.norm = nn.BatchNorm2d(output_channel, eps=NORM_EPS)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.relu = nn.ReLU()
         self.rot_classifier = nn.Linear(self.num_classes, 4)
         # final fc layer
-        self.proj_head = nn.Sequential(
-            nn.Linear(output_channel, num_classes),
-        )
+        # self.proj_head = nn.Sequential(
+        #     nn.Linear(output_channel, num_classes),
+        # )
 
+        # PT-MAP need ReLU as final layer
+        self.proj_head = nn.ReLU()
+        
         self.stage_out_idx = [sum(depths[:idx + 1]) - 1 for idx in range(len(depths))]
         print('initialize_weights...')
         self._initialize_weights()
@@ -638,11 +640,8 @@ class SSL_MedViT(nn.Module):
         x = self.norm(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        # x = self.proj_head(x)
-        
         feat = x
-        xx = self.classifier(x)
-        xx = self.relu (xx)
+        xx = self.proj_head(x)
 
         if(rot):
             xy = self.rot_classifier(xx)
