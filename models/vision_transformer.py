@@ -640,7 +640,7 @@ class SSL_MedViT(nn.Module):
                 x = layer(x)
         x = self.norm(x)
         x = self.avgpool(x)
-        x = torch.flatten(x, 1)
+        x = x.view(x.size(0), -1)
         feat = x
         xx = self.proj_head(x)
         print(xx.shape)
