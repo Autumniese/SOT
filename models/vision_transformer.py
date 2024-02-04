@@ -647,10 +647,10 @@ class SSL_MedViT(nn.Module):
 
         if(rot):
             xy = self.rot_classifier(xx)
-            return [_, _, _, _, feat], (xx, xy)
+            return [None, None, None, None, feat], (xx, xy)
 
         if is_feat:
-            return [_, _, _, _, feat], xx
+            return [None, None, None, None, feat], xx
         else:
             return xx
 
