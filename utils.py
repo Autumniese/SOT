@@ -32,7 +32,7 @@ def get_model(model_name: str, args):
     arch = model_name.lower()
     if arch in models.keys():
         if 'vit' in arch:
-            model = models[arch](img_size=args.img_size, patch_size=16)
+            model = models[arch](patch_size=16)
         elif(arch.endswith('ssl')):
             model = models[arch](avg_pool=True, drop_rate=0.1, dropblock_size=5, num_classes=n_cls[args.dataset.lower()])
         else:
