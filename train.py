@@ -48,7 +48,7 @@ def get_args():
     parser.add_argument('--lr', type=float, default=5e-5)
     parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--momentum', type=float, default=0.9)
-    parser.add_argument('--scheduler', type=str, default='step')
+    parser.add_argument('--scheduler', type=str, default=None)
     parser.add_argument('--step_size', type=int, default=5)
     parser.add_argument('--gamma', type=float, default=0.5)
     parser.add_argument('--augment', type=utils.bool_flag, default=True, help=""" Apply data augmentation. """)

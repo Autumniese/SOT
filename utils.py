@@ -84,7 +84,7 @@ def get_scheduler(args: argparse, optimizer: torch.optim):
     """
     Get optimizer.
     """
-    if args.scheduler == '':
+    if args.scheduler is None:
         return None
     elif args.scheduler == 'step':
         return optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=args.step_size, gamma=args.gamma)
