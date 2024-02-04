@@ -12,6 +12,7 @@ from scipy.optimize import linear_sum_assignment as linear_assignment
 from models.wrn_mixup_model import wrn28_10
 from models.resnet12 import Res12
 from models.resnet_ssl import resnet12_ssl
+from models.vision_transformer import MedViT_base, MedViT_small, MedViT_large
 from datasets import MiniImageNet, CIFAR, CUB, ISIC2018, BreakHis, PapSmear, Blood
 from datasets.samplers import CategoriesSampler
 from methods import PTMAPLoss, ProtoLoss
