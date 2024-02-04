@@ -641,9 +641,9 @@ class SSL_MedViT(nn.Module):
         x = self.norm(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        print(x.shape)
         feat = x
         xx = self.proj_head(x)
+        print(xx.shape)
 
         if(rot):
             xy = self.rot_classifier(xx)
