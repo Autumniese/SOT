@@ -498,6 +498,7 @@ class MedViT(nn.Module):
         self.norm = nn.BatchNorm2d(output_channel, eps=NORM_EPS)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.relu = nn.ReLU()
         # final fc layer
         self.proj_head = nn.Sequential(
             nn.Linear(output_channel, num_classes),
@@ -538,6 +539,7 @@ class MedViT(nn.Module):
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.proj_head(x)
+        x = self.relu(x)
         return x
 
 
