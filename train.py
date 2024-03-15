@@ -1,11 +1,13 @@
 import argparse
 from time import time
 import torch
+from torch import nn
 import torch.nn.functional as F
 
 import utils
+import augmentations
+from ignite.utils import convert_tensor
 from self_optimal_transport import SOT
-
 
 def get_args():
     """ Description: Parses arguments at command line. """
@@ -60,8 +62,13 @@ def get_args():
     parser.add_argument('--temperature', type=float, default=0.1, help=""" Temperature for ProtoNet. """)
     parser.add_argument('--dropout', type=float, default=0., help=""" Dropout probability. """)
 
-    # ssl args
-    parser.add_argument('--ssl_gamma', type=float, default=2, help='loss cofficient for ssl loss')
+    # # ssl args
+    # parser.add_argument('--ssl_gamma', type=float, default=2, help='loss cofficient for ssl loss')
+
+    # sla
+    parser.add_argument('--mode', type=str, default=None)
+    parser.add_argument('--aug', type=str, default=None)
+    parser.add_argument('--with-large-loss', action='store_true')
 
     # SOT args
     parser.add_argument('--ot_reg', type=float, default=0.1,
@@ -93,9 +100,15 @@ def main():
         train_loader = None
         val_loader = utils.get_dataloader(set_name='test', args=args, constant=False)
 
+    # Transformation
+    if args.aug is not None:
+        transform, m = augmentations.__dict__[args.aug]()
+
     # define model and load pretrained weights if available
     model = utils.get_model(args.backbone, args)
     model = model.cuda()
+    if args.aug is not None:
+        model.num_transformations = m
     utils.load_weights(model, args.pretrained_path)
 
     # define optimizer and scheduler
@@ -136,7 +149,7 @@ def main():
     for epoch in range(1, args.max_epochs + 1):
         print(f"Epoch {epoch}/{args.max_epochs}: ")
         # train
-        train_one_epoch(model, train_loader, optimizer, method, criterion, train_labels, logger, args.log_step, epoch, args.ssl_gamma)
+        train_one_epoch(model, train_loader, optimizer, method, criterion, train_labels, logger, args.log_step, epoch, transform, with_large_loss=args.with_large_loss)
         if scheduler is not None:
             scheduler.step()
 
@@ -155,7 +168,7 @@ def main():
         torch.save(model.state_dict(), f'{out_dir}/checkpoint_last.pth')
 
 
-def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger, log_step, epoch, ssl_gamma):
+def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger, log_step, epoch, transform, with_large_loss):
     model.train()
     results = {'train/accuracy': 0, 'train/loss': 0}
     start = time()
@@ -168,32 +181,40 @@ def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger,
         probas, accuracy = method(features, labels=labels, mode='train')
         q_labels = labels if len(labels) == len(probas) else labels[-len(probas):]
 
-        # ssl
-        batch_size = images.size()[0]
-        x = images
-        x_90 = x.transpose(2,3).flip(2)
-        x_180 = x.flip(2).flip(3)
-        x_270 = x.flip(2).transpose(2,3)
-        generated_data = torch.cat((x,x_90,x_180,x_270))
-        train_targets = target.repeat(4)
+        # sla+sd
+        batch_size = images.shape[0]
+        transformed_images = transform(model, images, target)
+        n = transformed_images.shape[0] // batch_size
 
-        rot_labels = torch.zeros(4*batch_size).cuda().long()
-        for i in range(4*batch_size):
-            if i < batch_size:
-                rot_labels[i] = 0
-            elif i < 2*batch_size:
-                rot_labels[i] = 1
-            elif i < 3*batch_size:
-                rot_labels[i] = 2
-            else:
-                rot_labels[i] = 3
+        preds = model(transformed_images)
+        label_sla = torch.stack([target*n+i for i in range(n)], 1).view(-1)
+        loss_sla = F.cross_entropy(preds, label_sla)
+        if with_large_loss:
+            loss_sla *= n
 
-        # forward
-        (_,_,_,_, feat), (train_logit, rot_logits) = model(generated_data, rot=True)
-        rot_labels = F.one_hot(rot_labels.to(torch.int64), 4).float()
-        loss_ss = torch.sum(F.binary_cross_entropy_with_logits(input = rot_logits, target = rot_labels))
+        # x_90 = x.transpose(2,3).flip(2)
+        # x_180 = x.flip(2).flip(3)
+        # x_270 = x.flip(2).transpose(2,3)
+        # generated_data = torch.cat((x,x_90,x_180,x_270))
+        # train_targets = target.repeat(4)
 
-        loss = ssl_gamma * loss_ss + criterion(probas, q_labels) 
+        # rot_labels = torch.zeros(4*batch_size).cuda().long()
+        # for i in range(4*batch_size):
+        #     if i < batch_size:
+        #         rot_labels[i] = 0
+        #     elif i < 2*batch_size:
+        #         rot_labels[i] = 1
+        #     elif i < 3*batch_size:
+        #         rot_labels[i] = 2
+        #     else:
+        #         rot_labels[i] = 3
+
+        # # forward
+        # (_,_,_,_, feat), (train_logit, rot_logits) = model(generated_data, rot=True)
+        # rot_labels = F.one_hot(rot_labels.to(torch.int64), 4).float()
+        # loss_ss = torch.sum(F.binary_cross_entropy_with_logits(input = rot_logits, target = rot_labels))
+
+        loss = loss_sla + criterion(probas, q_labels) 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -228,7 +249,7 @@ def eval_one_epoch(model, loader, method, criterion, labels, logger, epoch, set_
         probas, accuracy = method(X=features, labels=labels, mode='val')
         q_labels = labels if len(labels) == len(probas) else labels[-len(probas):]
 
-        loss = criterion(probas, q_labels)
+        loss = criterion(probas, q_labels) 
 
         results[f"{set_name}/loss"] += loss.item()
         results[f"{set_name}/accuracy"] += accuracy

@@ -182,9 +182,9 @@ class ResNet(nn.Module):
         if self.num_classes > 0:
             self.classifier = nn.Linear(640, self.num_classes)
             self.rot_classifier = nn.Linear(self.num_classes, 4)
-#             self.rot_classifier1 = nn.Linear(self.num_classes, 32)
-#             self.rot_classifier2 = nn.Linear(32, 16)
-#             self.rot_classifier3 = nn.Linear(16, 4)
+            # self.rot_classifier1 = nn.Linear(self.num_classes, 32)
+            # self.rot_classifier2 = nn.Linear(32, 16)
+            # self.rot_classifier3 = nn.Linear(16, 4)
 
     def _make_layer(self, block, n_block, planes, stride=1, drop_rate=0.0, drop_block=False, block_size=1):
         downsample = None
@@ -228,18 +228,15 @@ class ResNet(nn.Module):
         feat = x
         
         xx = self.classifier(x)
-        xx = self.relu (xx)
-
         
         if(rot):
-#             xy1 = self.rot_classifier1(xx)
-#             xy2 = self.rot_classifier2(xy1)
             xy = self.rot_classifier(xx)
-            return [f0, f1, f2, f3, feat], (xx, xy)
+            return feat, xx, xy
         
         if is_feat:
             return [f0, f1, f2, f3, feat], xx
         else:
+            xx = self.relu(xx)
             return xx
 
 
