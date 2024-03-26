@@ -41,7 +41,8 @@ class PapSmear(Dataset):
             ]
         else:
             transforms_list = [
-                transforms.Resize((self.image_size, self.image_size)),
+                transforms.Resize((self.image_size, self.image_size),antialias=True),
+                transforms.CenterCrop(self.image_size),
                 transforms.ToTensor(),
             ]
 
