@@ -70,14 +70,14 @@ class BreakHis(Dataset):
         if augment:
             transforms_list = [
                 transforms.Resize((self.image_size,self.image_size), antialias=True),
-                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
-                transforms.RandomHorizontalFlip(),
+                # transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+                # transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
             ]
         else:
             transforms_list = [
                 transforms.Resize((self.image_size, self.image_size), antialias=True),
-                transforms.CenterCrop(self.image_size),
+                # transforms.CenterCrop(self.image_size),
                 transforms.ToTensor(),
             ]
 
