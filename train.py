@@ -54,6 +54,8 @@ def get_args():
     parser.add_argument('--step_size', type=int, default=5)
     parser.add_argument('--gamma', type=float, default=0.5)
     parser.add_argument('--augment', type=utils.bool_flag, default=True, help=""" Apply data augmentation. """)
+    parser.add_argument('--early_stopping', type=utils.bool_flag, default=True)
+    parser.add_argument('--tolerance', type=int, default=25)
 
     # model args
     parser.add_argument('--backbone', type=str, default='WRN', choices=list(utils.models.keys()))
@@ -146,6 +148,7 @@ def main():
     print("Start training...")
     best_loss = 1000
     best_acc = 0
+    epochs_no_improve = 0
     for epoch in range(1, args.max_epochs + 1):
         print(f"Epoch {epoch}/{args.max_epochs}: ")
         # train
@@ -157,13 +160,21 @@ def main():
         if epoch % args.eval_freq == 0:
             result = eval_one_epoch(model, val_loader, method, criterion, val_labels, logger, epoch)
 
-            # save best model
+        # save best model
             if result['val/loss'] < best_loss:
                 best_loss = result['val/loss']
+                epochs_no_improve = 0
                 torch.save(model.state_dict(), f'{out_dir}/{epoch}_min_loss.pth')
             elif result['val/accuracy'] > best_acc:
                 best_acc = result['val/accuracy']
+                epochs_no_improve = 0
                 torch.save(model.state_dict(), f'{out_dir}/{epoch}_max_acc.pth')
+            else:
+                epochs_no_improve += 1
+            
+            if args.early_stopping == True and epoch > epochs_no_improve and epochs_no_improve == args.tolerance:
+                print(f"Early stopping at epoch {epoch}. Best val/loss: {best_loss}, Best val/acc: {best_acc}")
+                break
 
         torch.save(model.state_dict(), f'{out_dir}/checkpoint_last.pth')
 
