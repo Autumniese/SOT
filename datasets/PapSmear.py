@@ -27,22 +27,24 @@ class PapSmear(Dataset):
         self.data = data
         self.label = label
 
-        mean = [x / 255.0 for x in [129.37731888, 124.10583864, 112.47758569]]
-        std = [x / 255.0 for x in [68.20947949, 65.43124043, 70.45866994]]
+        # mean = [x / 255.0 for x in [129.37731888, 124.10583864, 112.47758569]]
+        # std = [x / 255.0 for x in [68.20947949, 65.43124043, 70.45866994]]
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
         normalize = transforms.Normalize(mean=mean, std=std)
 
         self.image_size = 84
         if augment and setname == 'train':
             transforms_list = [
                 transforms.Resize((self.image_size,self.image_size), antialias=True),
-                # transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
-                # transforms.RandomHorizontalFlip(),
+                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+                transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
             ]
         else:
             transforms_list = [
                 transforms.Resize((self.image_size, self.image_size),antialias=True),
-                # transforms.CenterCrop(self.image_size),
+                transforms.CenterCrop(self.image_size),
                 transforms.ToTensor(),
             ]
 
