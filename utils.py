@@ -14,14 +14,13 @@ from models.wrn_mixup_model import wrn28_10
 from models.res_mixup_model import resnet18
 from models.resnet12 import Res12
 from models.resnet_ssl import resnet12_ssl
-from models.vision_transformer import MedViT_base, MedViT_small, MedViT_large
 from datasets import MiniImageNet, CIFAR, CUB, ISIC2018, BreakHis, PapSmear, Blood
 from datasets.samplers import CategoriesSampler
 from methods import PTMAPLoss, ProtoLoss
 from self_optimal_transport import SOT
 
 
-models = dict(wrn=wrn28_10, resnet18=resnet18, resnet12=Res12, resnet_ssl=resnet12_ssl, medvit_base = MedViT_base, medvit_small=MedViT_small, medvit_large=MedViT_large)
+models = dict(wrn=wrn28_10, resnet18=resnet18, resnet12=Res12, resnet_ssl=resnet12_ssl)
 datasets = dict(miniimagenet=MiniImageNet, cifar=CIFAR, isic2018=ISIC2018, breakhis=BreakHis, papsmear=PapSmear, blood=Blood)
 n_cls = dict(isic2018=7, breakhis=8, papsmear=7, blood=11)
 methods = dict(pt_map=PTMAPLoss, pt_map_sot=PTMAPLoss, proto=ProtoLoss, proto_sot=ProtoLoss, )
@@ -41,6 +40,7 @@ def get_model(model_name: str, args):
             model = models[arch](num_classes=n_cls[args.dataset.lower()])
         else:
             model = models[arch](num_classes=n_cls[args.dataset.lower()], dropout=args.dropout)
+
 
         if torch.cuda.is_available():
             torch.backends.cudnn.benchmark = True
