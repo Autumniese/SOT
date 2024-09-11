@@ -37,14 +37,14 @@ class PapSmear(Dataset):
         if augment and setname == 'train':
             transforms_list = [
                 transforms.Resize((self.image_size,self.image_size), antialias=True),
-                # transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
-                # transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop((self.image_size,self.image_size), padding=10),
+                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+                transforms.RandomHorizontalFlip(p=0.5),
                 transforms.ToTensor(),
             ]
         else:
             transforms_list = [
                 transforms.Resize((self.image_size, self.image_size),antialias=True),
-                # transforms.CenterCrop(self.image_size),
                 transforms.ToTensor(),
             ]
 
@@ -59,3 +59,4 @@ class PapSmear(Dataset):
         path, label = self.data[i], self.label[i]
         image = self.transform(Image.open(path).convert('RGB'))
         return image, label, path
+ 

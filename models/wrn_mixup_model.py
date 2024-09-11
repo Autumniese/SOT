@@ -136,8 +136,8 @@ class WideResNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(nChannels[3])
         self.relu = nn.ReLU(inplace=True)
         self.nChannels = nChannels[3]
-
         self.num_classes = num_classes
+
         if flatten:
             self.final_feat_dim = 640
         for m in self.modules():
@@ -148,7 +148,7 @@ class WideResNet(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-    def forward(self, x, target=None, mixup=False, mixup_hidden=True, mixup_alpha=None, lam=0.4, return_logits=True):
+    def forward(self, x, target=None, mixup=False, mixup_hidden=True, mixup_alpha=None, lam=0.4, return_logit=False):
         if target is not None:
             if mixup_hidden:
                 layer_mix = random.randint(0, 3)
@@ -182,9 +182,6 @@ class WideResNet(nn.Module):
             out = self.relu(self.bn1(out))
             out = F.avg_pool2d(out, out.size()[2:])
             out = out.view(out.size(0), -1)
-            if not return_logits:
-                return out, target_a, target_b
-
             out1 = self.linear(out)
             return out, out1, target_a, target_b
         else:
@@ -196,14 +193,14 @@ class WideResNet(nn.Module):
             out = self.relu(self.bn1(out))
             out = F.avg_pool2d(out, out.size()[2:])
             out = out.view(out.size(0), -1)
-            # if not return_logits:
-            return out
+            if return_logit is False:
+                return out
+            # else:
+            #     out1 = self.linear(out)
+            #     return out, out1
 
-            # out1 = self.linear(out)
-            # return out, out1
 
-
-def wrn28_10(num_classes=200, loss_type='dist', dropout=0):
+def wrn28_10(num_classes=200, loss_type='dist', dropRate=0):
     model = WideResNet(depth=28, widen_factor=10, num_classes=num_classes, loss_type=loss_type, per_img_std=False,
-                       stride=1, dropRate=dropout)
+                       stride=1, dropRate=dropRate)
     return model

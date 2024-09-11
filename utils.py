@@ -1,14 +1,22 @@
+import datetime
 import os
 import wandb
 import argparse
 import random
 import numpy as np
 import torch
+import plotly.express as px
+import matplotlib.pyplot as plt
+import time
+
+
+from collections import defaultdict, deque
 from torch import optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 from sklearn.metrics import confusion_matrix
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from functools import partial
+from sklearn.manifold import TSNE
 
 from models.wrn_mixup_model import wrn28_10
 from models.res_mixup_model import resnet18
@@ -19,12 +27,17 @@ from datasets.samplers import CategoriesSampler
 from methods import PTMAPLoss, ProtoLoss
 from self_optimal_transport import SOT
 
+try:
+    import wandb
+    HAS_WANDB = True
+except Exception as e:
+    HAS_WANDB = False
 
 models = dict(wrn=wrn28_10, resnet18=resnet18, resnet12=Res12, resnet_ssl=resnet12_ssl)
 datasets = dict(miniimagenet=MiniImageNet, cifar=CIFAR, isic2018=ISIC2018, breakhis=BreakHis, papsmear=PapSmear, blood=Blood)
 n_cls = dict(isic2018=7, breakhis=8, papsmear=7, blood=11)
 methods = dict(pt_map=PTMAPLoss, pt_map_sot=PTMAPLoss, proto=ProtoLoss, proto_sot=ProtoLoss, )
-
+num_base_cls = dict(isic2018=4, breakhis=5, papsmear=4)
 
 def get_model(model_name: str, args):
     """
@@ -39,8 +52,7 @@ def get_model(model_name: str, args):
         elif(arch.startswith('resnet18')):
             model = models[arch](num_classes=n_cls[args.dataset.lower()])
         else:
-            model = models[arch](num_classes=n_cls[args.dataset.lower()], dropout=args.dropout)
-
+            model = models[arch](num_classes=n_cls[args.dataset.lower()], dropRate=args.dropout)
 
         if torch.cuda.is_available():
             torch.backends.cudnn.benchmark = True
@@ -48,6 +60,14 @@ def get_model(model_name: str, args):
         return model
     else:
         raise ValueError(f'Model {model_name} not implemented. available models are: {list(models.keys())}')
+
+
+def get_sla_classifier(args, m):
+    """
+    Get the sla classifier.
+    """
+    return torch.nn.Sequential(torch.nn.Linear(640, m*num_base_cls[args.dataset.lower()]))
+
 
 
 def get_dataloader(set_name: str, args: argparse, constant: bool = False):
@@ -68,8 +88,9 @@ def get_dataloader(set_name: str, args: argparse, constant: bool = False):
         num_way=num_way, num_shot=args.num_shot, num_query=args.num_query
     )
     return DataLoader(
-        data_set, batch_sampler=data_sampler, num_workers=args.num_workers, pin_memory=not constant
+        data_set, batch_sampler=data_sampler, num_workers=args.num_workers, pin_memory=not constant,
     )
+    
 
 
 def get_optimizer(args: argparse, params):
@@ -120,34 +141,57 @@ def get_criterion_by_method(method: str):
         raise ValueError(f'Not implemented criterion for this method. available methods are: {list(methods.keys())}')
 
 
-def get_logger(exp_name: str, args: argparse):
+def init_wandb(exp_name: str, args):
     """
     Initialize and returns wandb logger if args.wandb is True.
     """
-    if args.wandb:
-        logger = wandb.init(project=args.project, entity=args.entity, name=exp_name, config=vars(args))
-        # define which metrics will be plotted against it
-        logger.define_metric("train_loss", step_metric="epoch")
-        logger.define_metric("train_accuracy", step_metric="epoch")
-        logger.define_metric("val_loss", step_metric="epoch")
-        logger.define_metric("val_accuracy", step_metric="epoch")
-        return logger
+    if not args.wandb:
+        return None
+    assert HAS_WANDB, "Install wandb via - 'pip install wandb' in order to use wandb logging. "
+    logger = wandb.init(project=args.project, name=exp_name, config=vars(args))
+    # define which metrics will be plotted against it
+    logger.define_metric("train_loss", step_metric="epoch")
+    logger.define_metric("train_accuracy", step_metric="epoch")
+    logger.define_metric("val_loss", step_metric="epoch")
+    logger.define_metric("val_accuracy", step_metric="epoch")
+    return logger
 
-    return None
-
-
-def log_step(results: dict, logger: wandb):
+def wandb_log(results: dict):
     """
     Log step to the logger without print.
     """
-    if logger is not None:
-        logger.log(results)
+    if HAS_WANDB and wandb.run is not None:
+        wandb.log(results)
 
-    for key, value in results.items():
-        if 'acc' in key:
-            print(f"{key}: {100 * value:.2f}%")
-        else:
-            print(f"{key}: {value:.4f}")
+
+# def get_logger(exp_name: str, args: argparse):
+#     """
+#     Initialize and returns wandb logger if args.wandb is True.
+#     """
+#     if args.wandb:
+#         logger = wandb.init(project=args.project, entity=args.entity, name=exp_name, config=vars(args))
+#         # define which metrics will be plotted against it
+#         logger.define_metric("train_loss", step_metric="epoch")
+#         logger.define_metric("train_accuracy", step_metric="epoch")
+#         logger.define_metric("val_loss", step_metric="epoch")
+#         logger.define_metric("val_accuracy", step_metric="epoch")
+#         return logger
+
+#     return None
+
+
+# def log_step(results: dict, logger: wandb):
+#     """
+#     Log step to the logger without print.
+#     """
+#     if logger is not None:
+#         logger.log(results)
+
+#     for key, value in results.items():
+#         if 'acc' in key:
+#             print(f"{key}: {100 * value:.2f}%")
+#         else:
+#             print(f"{key}: {value:.4f}")
 
 
 def get_output_dir(args: argparse):
@@ -156,8 +200,8 @@ def get_output_dir(args: argparse):
     """
 
     out_dir = f'./checkpoints/{args.backbone.lower()}/{args.dataset.lower()}/' \
-              f'way{args.train_way}_shot{args.num_shot}_mask_diag{args.mask_diag}' \
-              f'_lr{args.lr}_sched{args.scheduler}_step{args.step_size}_drop{args.dropout}'
+              f'way{args.train_way}_shot{args.num_shot}' \
+              f'_lr{args.lr}_drop{args.dropout}'
 
     if args.eval:
         return out_dir
@@ -255,6 +299,20 @@ def print_and_log(results: dict, n: int = 0, logger: wandb = None):
         logger.log(results)
 
 
+def get_t_sne(loader):
+    data, label, _ = next(iter(loader))
+
+    data = (data.reshape(data.shape[0], data.shape[1]*data.shape[2]*data.shape[3]))
+
+    tsne = TSNE(n_components=2, n_jobs=-1)
+    X_tsne = tsne.fit_transform(data)
+
+    fig = px.scatter(x=X_tsne[:, 0], y=X_tsne[:, 1], color=label)
+    fig.update_layout(
+        title="t-SNE Visualization of BreakHis-40x",
+    )
+    fig.show()
+
 def set_seed(seed: int):
     """
     seed.
@@ -263,6 +321,7 @@ def set_seed(seed: int):
     np.random.seed(seed)
     torch.random.manual_seed(seed)
     torch.cuda.manual_seed(seed)
+
 
 
 def clustering_accuracy(true_row_labels, predicted_row_labels):
@@ -299,6 +358,13 @@ def _make_cost_m(cm):
     s = np.max(cm)
     return - cm + s
 
+def euclidean_metric(a, b):
+    n = a.shape[0]
+    m = b.shape[0]
+    a = a.unsqueeze(1).expand(n, m, -1)
+    b = b.unsqueeze(0).expand(n, m, -1)
+    logits = -((a - b)**2).sum(dim=2)
+    return logits
 
 class bcolors:
     HEADER = '\033[95m'
@@ -310,3 +376,141 @@ class bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+class SmoothedValue(object):
+    """Track a series of values and provide access to smoothed values over a
+    window or the global series average.
+    """
+
+    def __init__(self, window_size=20, fmt=None):
+        if fmt is None:
+            fmt = "{median:.6f} ({global_avg:.6f})"
+        self.deque = deque(maxlen=window_size)
+        self.total = 0.0
+        self.count = 0
+        self.fmt = fmt
+
+    def update(self, value, n=1):
+        self.deque.append(value)
+        self.count += n
+        self.total += value * n
+
+    @property
+    def median(self):
+        d = torch.tensor(list(self.deque))
+        return d.median().item()
+
+    @property
+    def avg(self):
+        d = torch.tensor(list(self.deque), dtype=torch.float32)
+        return d.mean().item()
+
+    @property
+    def global_avg(self):
+        return self.total / self.count
+
+    @property
+    def max(self):
+        return max(self.deque)
+
+    @property
+    def value(self):
+        return self.deque[-1]
+
+    def __str__(self):
+        return self.fmt.format(
+            median=self.median,
+            avg=self.avg,
+            global_avg=self.global_avg,
+            max=self.max,
+            value=self.value)
+
+
+class MetricLogger(object):
+    def __init__(self, delimiter="\t"):
+        self.meters = defaultdict(SmoothedValue)
+        self.delimiter = delimiter
+
+    def update(self, **kwargs):
+        for k, v in kwargs.items():
+            if isinstance(v, torch.Tensor):
+                v = v.item()
+            assert isinstance(v, (float, int))
+            self.meters[k].update(v)
+
+    def __getattr__(self, attr):
+        if attr in self.meters:
+            return self.meters[attr]
+        if attr in self.__dict__:
+            return self.__dict__[attr]
+        raise AttributeError("'{}' object has no attribute '{}'".format(
+            type(self).__name__, attr))
+
+    def __str__(self):
+        loss_str = []
+        for name, meter in self.meters.items():
+            loss_str.append(
+                "{}: {}".format(name, str(meter))
+            )
+        return self.delimiter.join(loss_str)
+
+    def add_meter(self, name, meter):
+        self.meters[name] = meter
+
+    def log_every(self, iterable, print_freq, header=None):
+        i = 0
+        if not header:
+            header = ''
+
+        start_time = time.time()
+        end = time.time()
+        iter_time = SmoothedValue(fmt='{avg:.6f}')
+        data_time = SmoothedValue(fmt='{avg:.6f}')
+        space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
+        if torch.cuda.is_available():
+            log_msg = self.delimiter.join([
+                header,
+                '[{0' + space_fmt + '}/{1}]',
+                'eta: {eta}',
+                '{meters}',
+                'time: {time}',
+                'data: {data}',
+                'mem: {memory:.0f} '
+                'mem reserved: {memory_res:.0f} '
+            ])
+        else:
+            log_msg = self.delimiter.join([
+                header,
+                '[{0' + space_fmt + '}/{1}]',
+                'eta: {eta}',
+                '{meters}',
+                'time: {time}',
+                'data: {data}'
+            ])
+        MB = 1024.0 * 1024.0
+        for obj in iterable:
+            data_time.update(time.time() - end)
+            yield obj
+            iter_time.update(time.time() - end)
+            len_iterable = len(iterable)
+            if i % print_freq == 0 or i == len_iterable - 1:
+                eta_seconds = iter_time.global_avg * (len_iterable - i)
+                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                if torch.cuda.is_available():
+                    print(log_msg.format(
+                        i, len_iterable, eta=eta_string,
+                        meters=str(self),
+                        time=str(iter_time), data=str(data_time),
+                        memory=torch.cuda.memory_allocated() / MB,
+                        memory_res=torch.cuda.memory_reserved() / MB))
+                else:
+                    print(log_msg.format(
+                        i, len_iterable, eta=eta_string,
+                        meters=str(self),
+                        time=str(iter_time), data=str(data_time)))
+            i += 1
+            end = time.time()
+        total_time = time.time() - start_time
+        total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+        print('{} Total time: {} ({:.6f} s / it)'.format(
+            header, total_time_str, total_time / len(iterable)))

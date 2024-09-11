@@ -6,7 +6,6 @@ import torch.nn.functional as F
 
 import utils
 import augmentations
-from ignite.utils import convert_tensor
 from self_optimal_transport import SOT
 
 def get_args():
@@ -42,7 +41,7 @@ def get_args():
     parser.add_argument('--num_query', type=int, default=15, help=""" Query size. """)
     parser.add_argument('--train_episodes', type=int, default=200, help=""" Number of episodes for each epoch. """)
     parser.add_argument('--eval_episodes', type=int, default=400, help=""" Number of tasks to evaluate. """)
-    parser.add_argument('--test_episodes', type=int, default=10000, help=""" Number of tasks to evaluate. """)
+    parser.add_argument('--test_episodes', type=int, default=400, help=""" Number of tasks to evaluate. """)
 
     # training args
     parser.add_argument('--max_epochs', type=int, default=25)
@@ -54,8 +53,8 @@ def get_args():
     parser.add_argument('--step_size', type=int, default=5)
     parser.add_argument('--gamma', type=float, default=0.5)
     parser.add_argument('--augment', type=utils.bool_flag, default=True, help=""" Apply data augmentation. """)
-    parser.add_argument('--early_stopping', type=utils.bool_flag, default=True)
-    parser.add_argument('--tolerance', type=int, default=25)
+    parser.add_argument('--early_stopping', type=utils.bool_flag, default=False)
+    parser.add_argument('--tolerance', type=int, default=10)
 
     # model args
     parser.add_argument('--backbone', type=str, default='WRN', choices=list(utils.models.keys()))
@@ -64,11 +63,7 @@ def get_args():
     parser.add_argument('--temperature', type=float, default=0.1, help=""" Temperature for ProtoNet. """)
     parser.add_argument('--dropout', type=float, default=0., help=""" Dropout probability. """)
 
-    # # ssl args
-    # parser.add_argument('--ssl_gamma', type=float, default=2, help='loss cofficient for ssl loss')
-
     # sla
-    parser.add_argument('--mode', type=str, default=None)
     parser.add_argument('--aug', type=str, default=None)
     parser.add_argument('--with-large-loss', action='store_true')
 
@@ -88,7 +83,6 @@ def get_args():
 
 def main():
     args = get_args()
-    print(vars(args))
 
     utils.set_seed(seed=args.seed)
     out_dir = utils.get_output_dir(args=args)
@@ -100,18 +94,25 @@ def main():
         val_loader = utils.get_dataloader(set_name='val', args=args, constant=True)
     else:
         train_loader = None
-        val_loader = utils.get_dataloader(set_name='test', args=args, constant=False)
+        try:
+            val_loader = utils.get_dataloader(set_name='test', args=args, constant=False)
+        except FileNotFoundError:
+            val_loader = utils.get_dataloader(set_name='val', args=args, constant=False)
 
-    # Transformation
+    ### SLA Transformation
     if args.aug is not None:
         transform, m = augmentations.__dict__[args.aug]()
+    else:
+        m = 0
 
     # define model and load pretrained weights if available
     model = utils.get_model(args.backbone, args)
     model = model.cuda()
-    if args.aug is not None:
-        model.num_transformations = m
     utils.load_weights(model, args.pretrained_path)
+
+    # define sla classifier
+    sla_classifier = utils.get_sla_classifier(args, m)
+    sla_classifier = sla_classifier.cuda()
 
     # define optimizer and scheduler
     optimizer = utils.get_optimizer(args=args, params=model.parameters())
@@ -129,20 +130,24 @@ def main():
     train_labels = utils.get_fs_labels(args.method, args.train_way, args.num_query, args.num_shot)
     val_labels = utils.get_fs_labels(args.method, args.val_way, args.num_query, args.num_shot)
 
+    # initialized wandb
+    if args.wandb:
+        utils.init_wandb(exp_name=out_dir.split('/')[-1], args=args)
+
     # set logger and criterion
     criterion = utils.get_criterion_by_method(method=args.method)
-    logger = utils.get_logger(exp_name=out_dir.split('/')[-1], args=args)
+    # logger = utils.get_logger(exp_name=out_dir.split('/')[-1], args=args)
 
     # only evaluate
     if args.eval:
         print(f"Evaluate model for {args.test_episodes} episodes... ")
-        eval_one_epoch(model, val_loader, method, criterion, val_labels, logger, 0, set_name='test')
+        eval_one_epoch(model, val_loader, method, criterion, val_labels, 0, args, set_name='test')
         exit(1)
 
     # evaluate model before training
     if args.eval_first:
         print("Evaluate model before training... ")
-        eval_one_epoch(model, val_loader, method, criterion, val_labels, logger, 0, set_name='val')
+        eval_one_epoch(model, val_loader, method, criterion, val_labels, -1, args, set_name='val')
 
     # main loop
     print("Start training...")
@@ -150,25 +155,26 @@ def main():
     best_acc = 0
     epochs_no_improve = 0
     for epoch in range(1, args.max_epochs + 1):
-        print(f"Epoch {epoch}/{args.max_epochs}: ")
+        print("[Epoch {}/{}]...".format(epoch, args.max_epochs))
+
         # train
-        train_one_epoch(model, train_loader, optimizer, method, criterion, train_labels, logger, args.log_step, epoch, transform, with_large_loss=args.with_large_loss)
+        train_one_epoch(model, train_loader, optimizer, method, sla_classifier, criterion, train_labels, epoch, transform, args)
         if scheduler is not None:
             scheduler.step()
 
         # eval
         if epoch % args.eval_freq == 0:
-            result = eval_one_epoch(model, val_loader, method, criterion, val_labels, logger, epoch)
+            eval_loss, eval_acc = eval_one_epoch(model, val_loader, method, criterion, val_labels, epoch, args, set_name='val')
 
         # save best model
-            if result['val/loss'] < best_loss:
-                best_loss = result['val/loss']
+            if eval_loss < best_loss:
+                best_loss = eval_loss
                 epochs_no_improve = 0
-                torch.save(model.state_dict(), f'{out_dir}/{epoch}_min_loss.pth')
-            elif result['val/accuracy'] > best_acc:
-                best_acc = result['val/accuracy']
+                torch.save(model.state_dict(), f"{out_dir}/{epoch}_min_loss_{eval_acc}.pth")
+            elif eval_acc > best_acc:
+                best_acc = eval_acc
                 epochs_no_improve = 0
-                torch.save(model.state_dict(), f'{out_dir}/{epoch}_max_acc.pth')
+                torch.save(model.state_dict(), f"{out_dir}/{epoch}_max_acc_{eval_acc}.pth")
             else:
                 epochs_no_improve += 1
             
@@ -176,82 +182,98 @@ def main():
                 print(f"Early stopping at epoch {epoch}. Best val/loss: {best_loss}, Best val/acc: {best_acc}")
                 break
 
-        torch.save(model.state_dict(), f'{out_dir}/checkpoint_last.pth')
+        torch.save(model.state_dict(), f"{out_dir}/last.pth")
 
 
-def train_one_epoch(model, loader, optimizer, method, criterion, labels, logger, log_step, epoch, transform, with_large_loss):
+def train_one_epoch(model, loader, optimizer, method, sla_classifier, criterion, labels, epoch, transform, args):
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    header = 'Train Epoch: [{}/{}]'.format(epoch, args.max_epochs)
+    log_freq = 50
+    n_batches = len(loader)
+
     model.train()
-    results = {'train/accuracy': 0, 'train/loss': 0}
-    start = time()
-    for batch_idx, (input, target, _) in enumerate(loader):
-
-        # Few-shot Classifier: PT-MAP SOT
+    # results = {'train/accuracy': 0, 'train/loss': 0}
+    # start = time()
+    for batch_idx, (input, target, _) in enumerate(metric_logger.log_every(loader, log_freq, header=header)):
         images, target = input.cuda(), target.cuda()
+        # feature extract
         features = model(images)
-        # apply few_shot method
+
+        # few_shot method
         probas, accuracy = method(features, labels=labels, mode='train')
         q_labels = labels if len(labels) == len(probas) else labels[-len(probas):]
 
-        # sla+sd
+        # sla
         batch_size = images.shape[0]
         transformed_images = transform(model, images, target)
         n = transformed_images.shape[0] // batch_size
 
-        preds = model(transformed_images)
+        feat_sla = model(transformed_images)
+        logit_sla = sla_classifier(feat_sla)
         label_sla = torch.stack([target*n+i for i in range(n)], 1).view(-1)
-        loss_sla = F.cross_entropy(preds, label_sla)
-        if with_large_loss:
+
+
+        loss_sla = F.cross_entropy(logit_sla, label_sla)
+
+        if args.with_large_loss:
             loss_sla *= n
-
-        # x_90 = x.transpose(2,3).flip(2)
-        # x_180 = x.flip(2).flip(3)
-        # x_270 = x.flip(2).transpose(2,3)
-        # generated_data = torch.cat((x,x_90,x_180,x_270))
-        # train_targets = target.repeat(4)
-
-        # rot_labels = torch.zeros(4*batch_size).cuda().long()
-        # for i in range(4*batch_size):
-        #     if i < batch_size:
-        #         rot_labels[i] = 0
-        #     elif i < 2*batch_size:
-        #         rot_labels[i] = 1
-        #     elif i < 3*batch_size:
-        #         rot_labels[i] = 2
-        #     else:
-        #         rot_labels[i] = 3
-
-        # # forward
-        # (_,_,_,_, feat), (train_logit, rot_logits) = model(generated_data, rot=True)
-        # rot_labels = F.one_hot(rot_labels.to(torch.int64), 4).float()
-        # loss_ss = torch.sum(F.binary_cross_entropy_with_logits(input = rot_logits, target = rot_labels))
 
         loss = loss_sla + criterion(probas, q_labels) 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        results["train/loss"] += loss.item()
-        results["train/accuracy"] += accuracy
+        metric_logger.update(loss=loss.detach().item(),
+                             accuracy=accuracy)
 
-        if log_step and (batch_idx + 1) % 50 == 0:
-            step = batch_idx+((epoch-1) * len(loader))
-            utils.log_step(
-                results={'train/loss_step': loss.item(), 'train/accuracy_step': accuracy, 'train/train_step': step},
-                logger=logger
+        if batch_idx % log_freq == 0:
+            utils.wandb_log(
+                {
+                    'train/loss_step': loss.item(),
+                    'train/accuracy_step': accuracy,
+                    'train/step': batch_idx + (epoch * n_batches)
+                }
             )
+        
+    print("Averaged stats:", metric_logger)
+    utils.wandb_log(
+        {
+            'lr': optimizer.param_groups[0]['lr'],
+            'train/epoch': epoch,
+            'train/loss': metric_logger.loss.global_avg,
+            'train/accuracy': metric_logger.accuracy.global_avg,
+        }
+    )
+    return metric_logger
 
-    results["train/time"] = time() - start
-    results["train/epoch"] = epoch
-    utils.print_and_log(results=results, n=len(loader), logger=logger)
-    return results
+        # results["train/loss"] += loss.item()
+        # results["train/accuracy"] += accuracy
+
+        # if log_step and (batch_idx + 1) % 50 == 0:
+        #     step = batch_idx+((epoch-1) * len(loader))
+        #     utils.log_step(
+        #         results={'train/loss_step': loss.item(), 'train/accuracy_step': accuracy, 'train/train_step': step},
+        #         logger=logger
+        #     )
+
+    # results["train/time"] = time() - start
+    # results["train/epoch"] = epoch
+    # utils.print_and_log(results=results, n=len(loader), logger=logger)
+    # return results
 
 
 @torch.no_grad()
-def eval_one_epoch(model, loader, method, criterion, labels, logger, epoch, set_name='val'):
+def eval_one_epoch(model, loader, method, criterion, labels, epoch, args, set_name='val'):
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    header = 'Validation:' if set_name == "val" else 'Test:'
+    log_freq = 50
+
+    n_batches = len(loader)
+
     model.eval()
     results = {f'{set_name}/accuracy': 0, f'{set_name}/loss': 0}
 
-    for batch_idx, batch in enumerate(loader):
+    for batch_idx, batch in enumerate(metric_logger.log_every(loader, log_freq, header=header)):
         images = batch[0].cuda()
 
         features = model(images)
@@ -260,23 +282,36 @@ def eval_one_epoch(model, loader, method, criterion, labels, logger, epoch, set_
         probas, accuracy = method(X=features, labels=labels, mode='val')
         q_labels = labels if len(labels) == len(probas) else labels[-len(probas):]
 
-        loss = criterion(probas, q_labels) 
+        loss = criterion(probas, q_labels)
 
-        results[f"{set_name}/loss"] += loss.item()
-        results[f"{set_name}/accuracy"] += accuracy
+        metric_logger.update(loss=loss.detach().item(),
+                             accuracy=accuracy)
 
-        if batch_idx % 50 == 0:
-            step = batch_idx+((epoch-1) * len(loader))
-            print(f"Batch {batch_idx + 1}/{len(loader)}: ")
-            utils.log_step(
-                results={f'{set_name}/loss_step': loss.item(), f'{set_name}/accuracy_step': accuracy,
-                         f'{set_name}/{set_name}_step': step},
-                logger=logger
-            )
+    print("Averaged stats:", metric_logger)
+    utils.wandb_log(
+        {
+            '{}/epoch'.format(set_name): epoch,
+            '{}/loss'.format(set_name): metric_logger.loss.global_avg,
+            '{}/accuracy'.format(set_name): metric_logger.accuracy.global_avg,
+        }
+    )
 
-    results["val/epoch"] = epoch
-    utils.print_and_log(results=results, n=len(loader), logger=logger)
-    return results
+    return metric_logger.loss.global_avg, metric_logger.accuracy.global_avg
+
+        
+
+    #     if batch_idx % 50 == 0:
+    #         step = batch_idx+((epoch-1) * len(loader))
+    #         print(f"Batch {batch_idx + 1}/{len(loader)}: ")
+    #         utils.log_step(
+    #             results={f'{set_name}/loss_step': loss.item(), f'{set_name}/accuracy_step': accuracy,
+    #                      f'{set_name}/{set_name}_step': step},
+    #             logger=logger
+    #         )
+
+    # results["val/epoch"] = epoch
+    # utils.print_and_log(results=results, n=len(loader), logger=logger)
+    # return results
 
 
 if __name__ == '__main__':
