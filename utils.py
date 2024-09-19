@@ -61,13 +61,19 @@ def get_model(model_name: str, args):
     else:
         raise ValueError(f'Model {model_name} not implemented. available models are: {list(models.keys())}')
 
+def get_sla_classifier(args, model, m):
+    modules = []
+    output_types = [n_cls[args.dataset.lower()] * m, n_cls[args.dataset.lower()]]
 
-def get_sla_classifier(args, m):
-    """
-    Get the sla classifier.
-    """
-    return torch.nn.Sequential(torch.nn.Linear(640, m*num_base_cls[args.dataset.lower()]))
+    for out in output_types:
+        if type(out) is int:
+            modules.append(torch.nn.Linear(640, out))
+        else:
+            raise Exception('out should be integer')
+        
+    model = sla_pred_model(model, modules)
 
+    return model
 
 
 def get_dataloader(set_name: str, args: argparse, constant: bool = False):
@@ -87,9 +93,14 @@ def get_dataloader(set_name: str, args: argparse, constant: bool = False):
         set_name, data_set.label, num_episodes, const_loader=constant,
         num_way=num_way, num_shot=args.num_shot, num_query=args.num_query
     )
-    return DataLoader(
-        data_set, batch_sampler=data_sampler, num_workers=args.num_workers, pin_memory=not constant,
-    )
+    if set_name == 'val' or set_name == 'test':
+        return DataLoader(
+            data_set, batch_sampler=data_sampler, num_workers=args.num_workers, pin_memory=not constant,
+        )
+    else:
+        return DataLoader(
+            data_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=not constant,
+        )
     
 
 
@@ -365,6 +376,22 @@ def euclidean_metric(a, b):
     b = b.unsqueeze(0).expand(n, m, -1)
     logits = -((a - b)**2).sum(dim=2)
     return logits
+
+class sla_pred_model(torch.nn.Module):
+    def __init__(self, model, classifiers):
+            super(sla_pred_model, self).__init__()
+            self.base_model = model
+            self.classifiers = torch.nn.ModuleList(classifiers)
+
+    def forward(self, x, idx=0):
+        features = self.base_model(x)
+        if type(idx) is int:
+            return self.classifiers[idx](features)
+        else:
+            if idx is None:
+                idx = list(range(len(self.classifiers)))
+            return [self.classifiers[i](features) for i in idx]
+
 
 class bcolors:
     HEADER = '\033[95m'

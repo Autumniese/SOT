@@ -12,15 +12,17 @@ class CategoriesSampler:
         self.num_query = num_query
         self.const_loader = const_loader
         self.num_episodes = num_episodes
-        self.m_ind = []
         self.batches = []
 
-        labels = np.array(labels)
+        labels = np.array(labels) # all data label
+        self.m_ind = [] # the data index of each class
         for i in range(max(labels) + 1):
-            ind = np.argwhere(labels == i).reshape(-1)
+            ind = np.argwhere(labels == i).reshape(-1) # all data index of this class
             ind = torch.from_numpy(ind)
-            if ind.numel() > 0:
-                self.m_ind.append(ind)
+            # if ind.numel() > 0:
+            self.m_ind.append(ind)
+
+        self.classes = np.arange(len(self.m_ind))
 
         # drop empty labels
         # self.m_ind = [tensor for tensor in self.m_ind if tensor.numel() > 0]
@@ -40,13 +42,17 @@ class CategoriesSampler:
         if self.const_loader:
             for i_batch in range(self.num_episodes):
                 batch = []
-                classes = torch.randperm(len(self.m_ind))[:self.num_way]
+                 # -- faster loading with np.choice -- #
+                # classes = torch.randperm(len(self.m_ind))[:self.num_way]
+                classes = np.random.choice(self.classes, size=self.num_way)
                 for c in classes:
-                    l = self.m_ind[c.item()]
-                    pos = torch.randperm(l.size()[0])
-                    batch.append(l[pos[: self.num_shot + self.num_query]])
+                    l = self.m_ind[c]
+                    pos = np.random.choice(np.arange(l.shape[0]),
+                                           size=self.num_shot + self.num_query,
+                                           replace=False)
+                    batch.append(l[pos])
 
-                batch = torch.stack(batch).t().reshape(-1)
+                batch = torch.from_numpy(np.stack(batch)).t().reshape(-1)
                 self.batches.append(batch)
 
     def __len__(self):
@@ -56,15 +62,16 @@ class CategoriesSampler:
         if not self.const_loader:
             for batch_idx in range(self.num_episodes):
                 batch = []
-                classes = torch.randperm(len(self.m_ind))[:self.num_way]
+                classes = np.random.choice(self.classes, size=self.num_way)
                 for c in classes:
-                    l = self.m_ind[c.item()]
-                    pos = torch.randperm(l.size()[0])
-                    batch.append(l[pos[: self.num_shot + self.num_query]])
+                    l = self.m_ind[c]
+                    pos = np.random.choice(np.arange(l.shape[0]),
+                                           size=self.num_shot + self.num_query,
+                                           replace=False)
+                    batch.append(l[pos])
 
-                batch = torch.stack(batch).t().reshape(-1)
+                batch = torch.from_numpy(np.stack(batch)).t().reshape(-1)
                 yield batch
         else:
             for batch_idx in range(self.num_episodes):
-                # batch = torch.stack(self.batches[i_batch]).reshape(-1)
                 yield self.batches[batch_idx]

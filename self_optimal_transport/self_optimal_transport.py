@@ -1,5 +1,6 @@
 import torch
 from self_optimal_transport import ot
+import torch.nn.functional as F
 
 
 class SOT(object):
@@ -38,7 +39,9 @@ class SOT(object):
 
         elif self.distance_metric == 'cosine':
             # cosine distance
-            return 1 - SOT.cosine_similarity(X)
+            x_norm = F.normalize(X, dim=-1, p=2)
+            pairwise_dist = 1 - (x_norm @ x_norm.transpose(-2, -1))
+        return pairwise_dist
 
     def mask_diagonal(self, M: torch.Tensor, value: float):
         """
@@ -76,13 +79,9 @@ class SOT(object):
         return self.mask_diagonal(z, value=1)
 
     @staticmethod
-    def cosine_similarity(a: torch.Tensor, eps: float = 1e-8):
+    def cosine_similarity(a: torch.Tensor):
         """
         Compute the pairwise cosine similarity between a matrix to itself.
         """
-        d_n = a / a.norm(dim=-1, keepdim=True)
-        if len(a.shape) > 2:
-            C = torch.bmm(d_n, d_n.transpose(1, 2))
-        else:
-            C = torch.mm(d_n, d_n.transpose(0, 1))
-        return C
+        x_norm = F.normalize(a, dim=-1, p=2)
+        return x_norm @ x_norm.transpose(-2, -1)

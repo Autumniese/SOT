@@ -55,6 +55,7 @@ def get_args():
     parser.add_argument('--augment', type=utils.bool_flag, default=True, help=""" Apply data augmentation. """)
     parser.add_argument('--early_stopping', type=utils.bool_flag, default=False)
     parser.add_argument('--tolerance', type=int, default=10)
+    parser.add_argument('--batch_size', type=int, default=128)
 
     # model args
     parser.add_argument('--backbone', type=str, default='WRN', choices=list(utils.models.keys()))
@@ -66,6 +67,7 @@ def get_args():
     # sla
     parser.add_argument('--aug', type=str, default=None)
     parser.add_argument('--with-large-loss', action='store_true')
+    parser.add_argument('--T', type=float, default=1.0)
 
     # SOT args
     parser.add_argument('--ot_reg', type=float, default=0.1,
@@ -111,7 +113,7 @@ def main():
     utils.load_weights(model, args.pretrained_path)
 
     # define sla classifier
-    sla_classifier = utils.get_sla_classifier(args, m)
+    sla_classifier = utils.get_sla_classifier(args, model, m)
     sla_classifier = sla_classifier.cuda()
 
     # define optimizer and scheduler
@@ -188,7 +190,7 @@ def main():
 def train_one_epoch(model, loader, optimizer, method, sla_classifier, criterion, labels, epoch, transform, args):
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Train Epoch: [{}/{}]'.format(epoch, args.max_epochs)
-    log_freq = 50
+    log_freq = 8
     n_batches = len(loader)
 
     model.train()
@@ -196,42 +198,54 @@ def train_one_epoch(model, loader, optimizer, method, sla_classifier, criterion,
     # start = time()
     for batch_idx, (input, target, _) in enumerate(metric_logger.log_every(loader, log_freq, header=header)):
         images, target = input.cuda(), target.cuda()
-        # feature extract
-        features = model(images)
-
-        # few_shot method
-        probas, accuracy = method(features, labels=labels, mode='train')
-        q_labels = labels if len(labels) == len(probas) else labels[-len(probas):]
 
         # sla
         batch_size = images.shape[0]
         transformed_images = transform(model, images, target)
         n = transformed_images.shape[0] // batch_size
 
-        feat_sla = model(transformed_images)
-        logit_sla = sla_classifier(feat_sla)
-        label_sla = torch.stack([target*n+i for i in range(n)], 1).view(-1)
+        joint_preds, single_preds = sla_classifier(transformed_images, None)
+        single_preds = single_preds[::n]
+        joint_labels = torch.stack([target*n+i for i in range(n)], 1).view(-1)
 
-
-        loss_sla = F.cross_entropy(logit_sla, label_sla)
+        joint_loss = F.cross_entropy(joint_preds, joint_labels)
+        single_loss = F.cross_entropy(single_preds, target)
 
         if args.with_large_loss:
-            loss_sla *= n
+            joint_loss = joint_loss * n
+        agg_preds = 0
+        for i in range(n):
+            agg_preds = agg_preds + joint_preds[i::n, i::n] / n
 
-        loss = loss_sla + criterion(probas, q_labels) 
+        loss_distillation = F.kl_div(F.log_softmax(single_preds / args.T, 1),
+                                     F.softmax(agg_preds.detach() / args.T, 1),
+                                     reduction="batchmean")
+        loss_distillation = loss_distillation.mul(args.T**2)
+
+        loss = joint_loss + single_loss + loss_distillation
+
+        _, predicted = torch.max(single_preds, 1)  # Returns the index of the maximum value along dimension 1
+        correct = (predicted == target).sum().item()  # Count correct predictions
+        accuracy = correct / target.size(0)  # Accuracy: correct predictions / total predictions
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         metric_logger.update(loss=loss.detach().item(),
+                             joint_loss = joint_loss,
+                             single_loss = single_loss,
+                             loss_distillation = loss_distillation,
                              accuracy=accuracy)
 
         if batch_idx % log_freq == 0:
             utils.wandb_log(
                 {
                     'train/loss_step': loss.item(),
-                    'train/accuracy_step': accuracy,
-                    'train/step': batch_idx + (epoch * n_batches)
+                    'train/joint_loss': joint_loss,
+                    'train/single_loss' : single_loss,
+                    'train/loss_distillation' : loss_distillation,
+                    'train/step': batch_idx + (epoch * n_batches),
+                    'accuracy/step': accuracy
                 }
             )
         
@@ -241,6 +255,9 @@ def train_one_epoch(model, loader, optimizer, method, sla_classifier, criterion,
             'lr': optimizer.param_groups[0]['lr'],
             'train/epoch': epoch,
             'train/loss': metric_logger.loss.global_avg,
+            'train/joint_loss': metric_logger.joint_loss.global_avg,
+            'train/single_loss' : metric_logger.single_loss.global_avg,
+            'train/loss_distillation' : metric_logger.loss_distillation.global_avg,
             'train/accuracy': metric_logger.accuracy.global_avg,
         }
     )
