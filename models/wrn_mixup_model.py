@@ -137,6 +137,7 @@ class WideResNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.nChannels = nChannels[3]
         self.num_classes = num_classes
+        self.linear=distLinear()
 
         if flatten:
             self.final_feat_dim = 640
@@ -195,9 +196,9 @@ class WideResNet(nn.Module):
             out = out.view(out.size(0), -1)
             if return_logit is False:
                 return out
-            # else:
-            #     out1 = self.linear(out)
-            #     return out, out1
+            else:
+                out1 = self.linear(out)
+                return out, out1
 
 
 def wrn28_10(num_classes=200, loss_type='dist', dropRate=0):

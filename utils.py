@@ -13,16 +13,19 @@ import time
 from collections import defaultdict, deque
 from torch import optim
 from torch.utils.data import DataLoader, RandomSampler
+from torchvision import transforms
 from sklearn.metrics import confusion_matrix
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from functools import partial
 from sklearn.manifold import TSNE
+from medmnist import DermaMNIST, OrganAMNIST, PathMNIST
+
 
 from models.wrn_mixup_model import wrn28_10
 from models.res_mixup_model import resnet18
 from models.resnet12 import Res12
 from models.resnet_ssl import resnet12_ssl
-from datasets import MiniImageNet, CIFAR, CUB, ISIC2018, BreakHis, PapSmear, Blood
+from datasets import MiniImageNet, CIFAR, CUB, ISIC2018, BreakHis, PapSmear, Blood, MedMNIST
 from datasets.samplers import CategoriesSampler
 from methods import PTMAPLoss, ProtoLoss
 from self_optimal_transport import SOT
@@ -34,8 +37,8 @@ except Exception as e:
     HAS_WANDB = False
 
 models = dict(wrn=wrn28_10, resnet18=resnet18, resnet12=Res12, resnet_ssl=resnet12_ssl)
-datasets = dict(miniimagenet=MiniImageNet, cifar=CIFAR, isic2018=ISIC2018, breakhis=BreakHis, papsmear=PapSmear, blood=Blood)
-n_cls = dict(isic2018=7, breakhis=8, papsmear=7, blood=11)
+datasets = dict(miniimagenet=MiniImageNet, cifar=CIFAR, isic2018=ISIC2018, breakhis=BreakHis, papsmear=PapSmear, blood=Blood, dermamnist=DermaMNIST, organamnist=OrganAMNIST, pathmnist=PathMNIST)
+n_cls = dict(isic2018=7, breakhis=8, papsmear=7, blood=11, pathmnist=9, dermamnist=7, organamnist=11)
 methods = dict(pt_map=PTMAPLoss, pt_map_sot=PTMAPLoss, proto=ProtoLoss, proto_sot=ProtoLoss, )
 num_base_cls = dict(isic2018=4, breakhis=5, papsmear=4)
 
@@ -83,25 +86,44 @@ def get_dataloader(set_name: str, args: argparse, constant: bool = False):
     num_episodes = args.set_episodes[set_name]
     num_way = args.train_way if set_name == 'train' else args.val_way
 
-    # define dataset sampler and data loader
-    data_set = datasets[args.dataset.lower()](
-        args.data_path, set_name, args.backbone, augment=set_name == 'train' and args.augment
-    )
-    args.img_size = data_set.image_size
+    if 'mnist' in args.dataset.lower():
+        mean = [x / 255.0 for x in [129.37731888, 124.10583864, 112.47758569]]
+        std = [x / 255.0 for x in [68.20947949, 65.43124043, 70.45866994]]
+        normalize = transforms.Normalize(mean=mean, std=std)
+        
+        if set_name == 'train':
+            transforms_list = [
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+                transforms.ToTensor(),
+            ]
+        else:
+            transforms_list = [
+                transforms.ToTensor(),
+            ]
 
-    data_sampler = CategoriesSampler(
-        set_name, data_set.label, num_episodes, const_loader=constant,
-        num_way=num_way, num_shot=args.num_shot, num_query=args.num_query
-    )
-    if set_name == 'val' or set_name == 'test':
-        return DataLoader(
-            data_set, batch_sampler=data_sampler, num_workers=args.num_workers, pin_memory=not constant,
+        transform = transforms.Compose(
+            transforms_list + [normalize]
+        )
+
+        data_set = datasets[args.dataset.lower()](
+            split=set_name, transform=transform, download=True, as_rgb=True, size=args.img_size
         )
     else:
-        return DataLoader(
-            data_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=not constant,
+        # define dataset sampler and data loader
+        data_set = datasets[args.dataset.lower()](
+            args.data_path, set_name, args.backbone, augment=set_name == 'train' and args.augment
         )
-    
+
+    data_sampler = CategoriesSampler(
+        set_name, data_set.labels, num_episodes, const_loader=constant,
+        num_way=num_way, num_shot=args.num_shot, num_query=args.num_query
+    )
+    return DataLoader(
+        data_set, batch_sampler=data_sampler, num_workers=args.num_workers, pin_memory=not constant,
+    )
+
+
 
 
 def get_optimizer(args: argparse, params):
