@@ -14,7 +14,7 @@ def get_args():
 
     # global args
     parser.add_argument('--seed', type=int, default=1)
-    parser.add_argument('--dataset', type=str, default='miniimagenet', choices=['miniimagenet', 'cifar', 'isic2018', 'breakhis', 'papsmear'])
+    parser.add_argument('--dataset', type=str, default='miniimagenet', choices=['miniimagenet', 'cifar', 'isic2018', 'breakhis', 'papsmear', 'pathmnist', 'organamnist', 'dermamnist'])
     parser.add_argument('--data_path', type=str, default='./datasets/few_shot/miniimagenet')
     parser.add_argument('--method', type=str, default='pt_map_sot',
                         choices=['pt_map', 'pt_map_sot', 'proto', 'proto_sot'],
@@ -140,6 +140,7 @@ def main():
     # set logger and criterion
     criterion = utils.get_criterion_by_method(method=args.method)
     # logger = utils.get_logger(exp_name=out_dir.split('/')[-1], args=args)
+    
 
     # only evaluate
     if args.eval:
@@ -161,7 +162,7 @@ def main():
         print("[Epoch {}/{}]...".format(epoch, args.max_epochs))
 
         # train
-        train_one_epoch(model, train_loader, optimizer, method, sla_classifier, criterion, train_labels, epoch, transform, args)
+        train_one_epoch(model, train_loader, optimizer, method, criterion, train_labels, epoch, transform, args)
         if scheduler is not None:
             scheduler.step()
 
@@ -188,7 +189,7 @@ def main():
         torch.save(model.state_dict(), f"{out_dir}/last.pth")
 
 
-def train_one_epoch(model, loader, optimizer, method, sla_classifier, criterion, labels, epoch, transform, args):
+def train_one_epoch(model, loader, optimizer, method, criterion, labels, epoch, transform, args):
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Train Epoch: [{}/{}]'.format(epoch, args.max_epochs)
     log_freq = 8
@@ -218,7 +219,7 @@ def train_one_epoch(model, loader, optimizer, method, sla_classifier, criterion,
             loss_sla = loss_sla * n
 
         """
-        joint_preds, single_preds = sla_classifier(transformed_images, None)
+        joint_preds, single_preds = model(transformed_images, None)
         single_preds = single_preds[::n]
         joint_labels = torch.stack([target*n+i for i in range(n)], 1).view(-1)
 
@@ -255,6 +256,8 @@ def train_one_epoch(model, loader, optimizer, method, sla_classifier, criterion,
             utils.wandb_log(
                 {
                     'train/loss_step': loss.item(),
+                    'train/loss_cl' : loss_cl.item(),
+                    'train/loss_sla': loss_sla,
                     # 'train/joint_loss': joint_loss,
                     # 'train/single_loss' : single_loss,
                     # 'train/loss_distillation' : loss_distillation,
@@ -269,9 +272,11 @@ def train_one_epoch(model, loader, optimizer, method, sla_classifier, criterion,
             'lr': optimizer.param_groups[0]['lr'],
             'train/epoch': epoch,
             'train/loss': metric_logger.loss.global_avg,
-            'train/joint_loss': metric_logger.joint_loss.global_avg,
-            'train/single_loss' : metric_logger.single_loss.global_avg,
-            'train/loss_distillation' : metric_logger.loss_distillation.global_avg,
+            'train/loss_cl': metric_logger.loss_cl.global_avg,
+            'train/loss_sla': metric_logger.loss_sla.global_avg,
+            # 'train/joint_loss': metric_logger.joint_loss.global_avg,
+            # 'train/single_loss' : metric_logger.single_loss.global_avg,
+            # 'train/loss_distillation' : metric_logger.loss_distillation.global_avg,
             'train/accuracy': metric_logger.accuracy.global_avg,
         }
     )
