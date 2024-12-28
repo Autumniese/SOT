@@ -18,14 +18,13 @@ from sklearn.metrics import confusion_matrix
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from functools import partial
 from sklearn.manifold import TSNE
-from medmnist import DermaMNIST, OrganAMNIST, PathMNIST
-
+# from medmnist import DermaMNIST
 
 from models.wrn_mixup_model import wrn28_10
 from models.res_mixup_model import resnet18
 from models.resnet12 import Res12
 from models.resnet_ssl import resnet12_ssl
-from datasets import MiniImageNet, CIFAR, CUB, ISIC2018, BreakHis, PapSmear, Blood, MedMNIST
+from datasets import MiniImageNet, CIFAR, CUB, ISIC2018, BreakHis, PapSmear, Blood, DermaMNIST, OrganAMNIST, PathMNIST
 from datasets.samplers import CategoriesSampler
 from methods import PTMAPLoss, ProtoLoss
 from self_optimal_transport import SOT
@@ -37,12 +36,13 @@ except Exception as e:
     HAS_WANDB = False
 
 models = dict(wrn=wrn28_10, resnet18=resnet18, resnet12=Res12, resnet_ssl=resnet12_ssl)
-datasets = dict(miniimagenet=MiniImageNet, cifar=CIFAR, isic2018=ISIC2018, breakhis=BreakHis, papsmear=PapSmear, blood=Blood, dermamnist=DermaMNIST, organamnist=OrganAMNIST, pathmnist=PathMNIST)
+datasets = dict(miniimagenet=MiniImageNet, cifar=CIFAR, isic2018=ISIC2018, breakhis=BreakHis, papsmear=PapSmear, blood=Blood, dermamnist=DermaMNIST, organamnist=OrganAMNIST,pathmnist=PathMNIST
+                )
 n_cls = dict(isic2018=7, breakhis=8, papsmear=7, blood=11, pathmnist=9, dermamnist=7, organamnist=11)
 methods = dict(pt_map=PTMAPLoss, pt_map_sot=PTMAPLoss, proto=ProtoLoss, proto_sot=ProtoLoss, )
 num_base_cls = dict(isic2018=4, breakhis=5, papsmear=4)
 
-def get_model(model_name: str, args):
+def get_model(model_name: str, m: int,  args):
     """
     Get the backbone model.
     """
@@ -55,7 +55,7 @@ def get_model(model_name: str, args):
         elif(arch.startswith('resnet18')):
             model = models[arch](num_classes=n_cls[args.dataset.lower()])
         else:
-            model = models[arch](num_classes=n_cls[args.dataset.lower()], dropRate=args.dropout)
+            model = models[arch](num_classes=n_cls[args.dataset.lower()], num_sla=m, dropRate=args.dropout)
 
         if torch.cuda.is_available():
             torch.backends.cudnn.benchmark = True
@@ -86,6 +86,7 @@ def get_dataloader(set_name: str, args: argparse, constant: bool = False):
     num_episodes = args.set_episodes[set_name]
     num_way = args.train_way if set_name == 'train' else args.val_way
 
+    """
     if 'mnist' in args.dataset.lower():
         mean = [x / 255.0 for x in [129.37731888, 124.10583864, 112.47758569]]
         std = [x / 255.0 for x in [68.20947949, 65.43124043, 70.45866994]]
@@ -110,10 +111,11 @@ def get_dataloader(set_name: str, args: argparse, constant: bool = False):
             split=set_name, transform=transform, download=True, as_rgb=True, size=args.img_size
         )
     else:
-        # define dataset sampler and data loader
-        data_set = datasets[args.dataset.lower()](
-            args.data_path, set_name, args.backbone, augment=set_name == 'train' and args.augment
-        )
+    """
+    # define dataset sampler and data loader
+    data_set = datasets[args.dataset.lower()](
+        args.data_path, set_name, args.backbone, augment=set_name == 'train' and args.augment
+    )
 
     data_sampler = CategoriesSampler(
         set_name, data_set.labels, num_episodes, const_loader=constant,
@@ -122,8 +124,6 @@ def get_dataloader(set_name: str, args: argparse, constant: bool = False):
     return DataLoader(
         data_set, batch_sampler=data_sampler, num_workers=args.num_workers, pin_memory=not constant,
     )
-
-
 
 
 def get_optimizer(args: argparse, params):
@@ -174,6 +174,34 @@ def get_criterion_by_method(method: str):
         raise ValueError(f'Not implemented criterion for this method. available methods are: {list(methods.keys())}')
 
 
+def get_criterion_by_backbone(backbone: str):
+    """
+    Get loss function based on the backbone.
+    """
+
+    if 'wrn' or 'resnet' in backbone:
+        return torch.nn.CrossEntropyLoss()
+    else:
+        raise ValueError(f'Not implemented criterion for this backbone. available methods are: {list(models.keys())}')
+
+
+def load_criterion_optimizer(criterion, optimizer, args):
+    pretrained_path = args.pretrained_path
+
+    if not pretrained_path or 'miniImagenet' in pretrained_path or args.eval is True:
+        return criterion, optimizer
+
+    print(f'Loading criterion and optimizer from {pretrained_path}')
+
+    checkpoint = torch.load(pretrained_path)
+
+    criterion.load_state_dict(checkpoint['criterion_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+    print("Criterion and optimizer load successfully ")
+    return criterion, optimizer
+
+
 def init_wandb(exp_name: str, args):
     """
     Initialize and returns wandb logger if args.wandb is True.
@@ -188,6 +216,7 @@ def init_wandb(exp_name: str, args):
     logger.define_metric("val_loss", step_metric="epoch")
     logger.define_metric("val_accuracy", step_metric="epoch")
     return logger
+
 
 def wandb_log(results: dict):
     """
@@ -254,15 +283,22 @@ def get_output_dir(args: argparse):
     return out_dir
 
 
-def load_weights(model: torch.nn.Module, pretrained_path: str):
+def load_weights(model: torch.nn.Module, args: argparse):
     """
     Load pretrained weights from given path.
     """
+    pretrained_path = args.pretrained_path
+
     if not pretrained_path:
         return model
 
     print(f'Loading weights from {pretrained_path}')
-    state_dict = torch.load(pretrained_path)
+
+    # state_dict = torch.load(pretrained_path)
+    # sd_keys = list(state_dict.keys())
+
+    checkpoint = torch.load(pretrained_path)
+    state_dict = checkpoint['model_state_dict']
     sd_keys = list(state_dict.keys())
     if 'state' in sd_keys:
         state_dict = state_dict['state']
@@ -282,6 +318,7 @@ def load_weights(model: torch.nn.Module, pretrained_path: str):
             del state_dict[k]
 
         model.load_state_dict(state_dict, strict=True)
+
     else:
         model.load_state_dict(state_dict)
 

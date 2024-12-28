@@ -14,7 +14,7 @@ class CategoriesSampler:
         self.num_episodes = num_episodes
         self.batches = []
 
-        labels = np.array(labels) # all data label
+        labels = np.array([int(i) for i in labels]) # all data label
         self.m_ind = [] # the data index of each class
         for i in range(max(labels) + 1):
             ind = np.argwhere(labels == i).reshape(-1) # all data index of this class
