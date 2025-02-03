@@ -42,7 +42,8 @@ n_cls = dict(isic2018=7, breakhis=8, papsmear=7, blood=11, pathmnist=9, dermamni
 methods = dict(pt_map=PTMAPLoss, pt_map_sot=PTMAPLoss, proto=ProtoLoss, proto_sot=ProtoLoss, )
 num_base_cls = dict(isic2018=4, breakhis=5, papsmear=4)
 
-def get_model(model_name: str, m: int,  args):
+
+def get_model(model_name: str, args, m):
     """
     Get the backbone model.
     """
@@ -55,7 +56,9 @@ def get_model(model_name: str, m: int,  args):
         elif(arch.startswith('resnet18')):
             model = models[arch](num_classes=n_cls[args.dataset.lower()])
         else:
-            model = models[arch](num_classes=n_cls[args.dataset.lower()], num_sla=m, dropRate=args.dropout)
+            model = models[arch](num_classes=n_cls[args.dataset.lower()] * m, dropRate=args.dropout)
+            # model = models[arch](num_classes=n_cls[args.dataset.lower()], dropRate=args.dropout)
+
 
         if torch.cuda.is_available():
             torch.backends.cudnn.benchmark = True
@@ -64,20 +67,6 @@ def get_model(model_name: str, m: int,  args):
     else:
         raise ValueError(f'Model {model_name} not implemented. available models are: {list(models.keys())}')
 
-def get_sla_classifier(args, model, m):
-    modules = []
-    output_types = [n_cls[args.dataset.lower()] * m, n_cls[args.dataset.lower()]]
-
-    for out in output_types:
-        if type(out) is int:
-            modules.append(torch.nn.Linear(640, out))
-        else:
-            raise Exception('out should be integer')
-        
-    model = sla_pred_model(model, modules)
-
-    return model
-
 
 def get_dataloader(set_name: str, args: argparse, constant: bool = False):
     """
@@ -85,33 +74,6 @@ def get_dataloader(set_name: str, args: argparse, constant: bool = False):
     """
     num_episodes = args.set_episodes[set_name]
     num_way = args.train_way if set_name == 'train' else args.val_way
-
-    """
-    if 'mnist' in args.dataset.lower():
-        mean = [x / 255.0 for x in [129.37731888, 124.10583864, 112.47758569]]
-        std = [x / 255.0 for x in [68.20947949, 65.43124043, 70.45866994]]
-        normalize = transforms.Normalize(mean=mean, std=std)
-        
-        if set_name == 'train':
-            transforms_list = [
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
-                transforms.ToTensor(),
-            ]
-        else:
-            transforms_list = [
-                transforms.ToTensor(),
-            ]
-
-        transform = transforms.Compose(
-            transforms_list + [normalize]
-        )
-
-        data_set = datasets[args.dataset.lower()](
-            split=set_name, transform=transform, download=True, as_rgb=True, size=args.img_size
-        )
-    else:
-    """
     # define dataset sampler and data loader
     data_set = datasets[args.dataset.lower()](
         args.data_path, set_name, args.backbone, augment=set_name == 'train' and args.augment
@@ -435,6 +397,18 @@ def euclidean_metric(a, b):
     b = b.unsqueeze(0).expand(n, m, -1)
     logits = -((a - b)**2).sum(dim=2)
     return logits
+
+def compute_confidence_interval(data):
+    """
+    Compute 95% confidence interval
+    :param data: An array of mean accuracy (or mAP) across a number of sampled episodes.
+    :return: the 95% confidence interval for this data.
+    """
+    a = 1.0 * np.array(data)
+    m = np.mean(a)
+    std = np.std(a)
+    pm = 1.96 * (std / np.sqrt(len(a)))
+    return m, pm
 
 class sla_pred_model(torch.nn.Module):
     def __init__(self, model, classifiers):

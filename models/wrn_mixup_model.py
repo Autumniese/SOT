@@ -115,7 +115,7 @@ def mixup_data(x, y, lam):
 
 
 class WideResNet(nn.Module):
-    def __init__(self, depth=28, widen_factor=10, num_classes=200, num_sla=1, loss_type='dist', per_img_std=False, stride=1,
+    def __init__(self, depth=28, widen_factor=10, num_classes=200, loss_type='dist', per_img_std=False, stride=1,
                  dropRate=0.5):
         flatten = True
         super(WideResNet, self).__init__()
@@ -137,8 +137,7 @@ class WideResNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.nChannels = nChannels[3]
         self.num_classes = num_classes
-        self.num_sla = num_sla
-        self.linear=distLinear(nChannels[3], num_classes*num_sla)
+        self.linear=distLinear(nChannels[3], num_classes)
 
         if flatten:
             self.final_feat_dim = 640
@@ -202,7 +201,7 @@ class WideResNet(nn.Module):
                 return out, out1
 
 
-def wrn28_10(num_classes=200, num_sla=1, loss_type='dist', dropRate=0):
-    model = WideResNet(depth=28, widen_factor=10, num_classes=num_classes, num_sla=num_sla, loss_type=loss_type, per_img_std=False,
+def wrn28_10(num_classes=200, loss_type='dist', dropRate=0):
+    model = WideResNet(depth=28, widen_factor=10, num_classes=num_classes, loss_type=loss_type, per_img_std=False,
                        stride=1, dropRate=dropRate)
     return model

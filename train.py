@@ -70,6 +70,14 @@ def get_args():
     parser.add_argument('--with_large_loss', action='store_true')
     parser.add_argument('--T', type=float, default=1.0)
     parser.add_argument('--sla_reg', type=float, default=0.1)
+    
+    # distillation
+    parser.add_argument('--knowledge_distillation', type=utils.bool_flag, default=False)
+    parser.add_argument('--teacher_path', type=str, help="""Path to teacher model to distill student model.""")
+    parser.add_argument('--distillation_type', default='none', choices=['none', 'soft', 'hard'], type=str, help="")
+    parser.add_argument('--distillation_alpha', default=0.1, type=float, help="")
+    parser.add_argument('--distillation_tau', default=1.0, type=float, help="")
+
 
     # SOT args
     parser.add_argument('--ot_reg', type=float, default=0.1,
@@ -108,15 +116,13 @@ def main():
         transform, m = augmentations.__dict__[args.aug]()
     else:
         m = 0
-
+        
     # define model and load pretrained weights if available
-    model = utils.get_model(args.backbone, m, args)
+    model = utils.get_model(args.backbone, args, m)
     model = model.cuda()
     utils.load_weights(model, args)
 
-    # define sla classifier
-    # sla_classifier = utils.get_sla_classifier(args, model, m)
-    # sla_classifier = sla_classifier.cuda()
+    # define teacher model for knowledge distillation
 
     # set criterion for backbone and few-shot method
     method_criterion = utils.get_criterion_by_method(method=args.method)
@@ -236,6 +242,7 @@ def train_one_epoch(model, loader, optimizer, method, method_criterion, backbone
         if args.with_large_loss:
             loss_sla = loss_sla * n
 
+        # sla + kd 
         """
         joint_preds, single_preds = model(transformed_images, None)
         single_preds = single_preds[::n]
@@ -256,9 +263,12 @@ def train_one_epoch(model, loader, optimizer, method, method_criterion, backbone
         loss_distillation = loss_distillation.mul(args.T**2)
         """
 
-        # loss
+        # loss (cl + sla)
         loss_cl = method_criterion(probas, q_labels)
         loss = loss_cl + (loss_sla * args.sla_reg)
+        
+        # loss 
+        # loss = method_criterion(probas, q_labels)
 
         optimizer.zero_grad()
         loss.backward()
@@ -325,7 +335,7 @@ def eval_one_epoch(model, loader, method, method_criterion, labels, epoch, args,
     n_batches = len(loader)
 
     model.eval()
-    results = {f'{set_name}/accuracy': 0, f'{set_name}/loss': 0}
+    acc_list = []
 
     for batch_idx, batch in enumerate(metric_logger.log_every(loader, log_freq, header=header)):
         images = batch[0].cuda()
@@ -338,9 +348,13 @@ def eval_one_epoch(model, loader, method, method_criterion, labels, epoch, args,
 
         loss = method_criterion(probas, q_labels)
 
+        acc_list.append(accuracy*100)
+
         metric_logger.update(loss=loss.detach().item(),
                              accuracy=accuracy)
 
+    a, b = utils.compute_confidence_interval(acc_list)
+    print("{}-way {}-shot accuracy with 95% interval : {:.2f}±{:.2f}".format(args.val_way, args.num_shot, a, b))
     print("Averaged stats:", metric_logger)
     utils.wandb_log(
         {
