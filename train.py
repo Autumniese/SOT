@@ -72,7 +72,8 @@ def get_args():
     parser.add_argument('--sla_reg', type=float, default=0.1)
     
     # distillation
-    parser.add_argument('--knowledge_distillation', type=utils.bool_flag, default=False)
+    parser.add_argument('--kd', type=utils.bool_flag, default=False)
+    parser.add_argument('--teacher_backbone', type=str, default='WRN', choices=list(utils.teacher_models.keys()))
     parser.add_argument('--teacher_path', type=str, help="""Path to teacher model to distill student model.""")
     parser.add_argument('--distillation_type', default='none', choices=['none', 'soft', 'hard'], type=str, help="")
     parser.add_argument('--distillation_alpha', default=0.1, type=float, help="")
@@ -123,10 +124,22 @@ def main():
     utils.load_weights(model, args)
 
     # define teacher model for knowledge distillation
+    if args.kd == True:
+        # define teacher model for knowledge distillation
+        teacher_model = utils.get_teacher_model(m, args)
+        teacher_model = teacher_model.cuda()
+        teacher_model.eval()
 
-    # set criterion for backbone and few-shot method
-    method_criterion = utils.get_criterion_by_method(method=args.method)
-    backbone_criterion = utils.get_criterion_by_backbone(backbone=args.backbone)
+        # set criterion for backbone and few-shot method
+        method_criterion = utils.get_criterion_by_method(method=args.method)
+        backbone_criterion = utils.get_criterion_by_backbone(backbone=args.backbone)
+
+        # wrap the criterion(backbone) with Distillationloss
+        backbone_criterion = utils.get_distillation_loss(backbone_criterion, teacher_model, args.distillation_type, args.distillation_alpha, args.distillation_tau, args.sla_reg)
+    else:
+        # set criterion for backbone and few-shot method
+        method_criterion = utils.get_criterion_by_method(method=args.method)
+        backbone_criterion = utils.get_criterion_by_backbone(backbone=args.backbone)
 
     # define optimizer and scheduler
     optimizer = utils.get_optimizer(args=args, params=model.parameters())
@@ -237,10 +250,7 @@ def train_one_epoch(model, loader, optimizer, method, method_criterion, backbone
 
         feats, preds = model(transformed_images, return_logit=True)
         label_sla = torch.stack([target*n+i for i in range(n)], 1).view(-1)
-        loss_sla = backbone_criterion(preds, label_sla) 
 
-        if args.with_large_loss:
-            loss_sla = loss_sla * n
 
         # sla + kd 
         """
@@ -264,11 +274,24 @@ def train_one_epoch(model, loader, optimizer, method, method_criterion, backbone
         """
 
         # loss (cl + sla)
+        """
+        loss_sla = backbone_criterion(preds, label_sla) 
+        if args.with_large_loss:
+            loss_sla = loss_sla * n
         loss_cl = method_criterion(probas, q_labels)
         loss = loss_cl + (loss_sla * args.sla_reg)
+        """
         
         # loss 
         # loss = method_criterion(probas, q_labels)
+
+        # loss (cl + sla + kd)
+        loss_sla_kd = backbone_criterion(transformed_images, preds, label_sla)
+        if args.with_large_loss:
+            loss_sla_kd *= n
+        loss_cl = method_criterion(probas, q_labels)
+        loss = loss_sla_kd + loss_cl
+
 
         optimizer.zero_grad()
         loss.backward()
@@ -276,8 +299,8 @@ def train_one_epoch(model, loader, optimizer, method, method_criterion, backbone
 
         metric_logger.update(loss=loss.detach().item(),
                              loss_cl = loss_cl.detach().item(),
-                             loss_sla = loss_sla.detach().item(),
-                            #  loss_distillation = loss_distillation,
+                            #  loss_sla = loss_sla.detach().item(),
+                             loss_sla_kd = loss_sla_kd,
                              accuracy=accuracy)
 
         if batch_idx % log_freq == 0:
@@ -285,10 +308,10 @@ def train_one_epoch(model, loader, optimizer, method, method_criterion, backbone
                 {
                     'train/loss_step': loss.item(),
                     'train/loss_cl' : loss_cl.item(),
-                    'train/loss_sla': loss_sla.item(),
+                    # 'train/loss_sla': loss_sla.item(),
                     # 'train/joint_loss': joint_loss,
                     # 'train/single_loss' : single_loss,
-                    # 'train/loss_distillation' : loss_distillation,
+                    'train/loss_sla_kd' : loss_sla_kd.item(),
                     'train/step': batch_idx + (epoch * n_batches),
                     'train/accuracy_step': accuracy
                 }
@@ -301,10 +324,10 @@ def train_one_epoch(model, loader, optimizer, method, method_criterion, backbone
             'train/epoch': epoch,
             'train/loss': metric_logger.loss.global_avg,
             'train/loss_cl': metric_logger.loss_cl.global_avg,
-            'train/loss_sla': metric_logger.loss_sla.global_avg,
+            # 'train/loss_sla': metric_logger.loss_sla.global_avg,
             # 'train/joint_loss': metric_logger.joint_loss.global_avg,
             # 'train/single_loss' : metric_logger.single_loss.global_avg,
-            # 'train/loss_distillation' : metric_logger.loss_distillation.global_avg,
+            'train/loss_sla_kd' : metric_logger.loss_sla_kd.global_avg,
             'train/accuracy': metric_logger.accuracy.global_avg,
         }
     )

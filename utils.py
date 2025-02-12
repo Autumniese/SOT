@@ -18,16 +18,18 @@ from sklearn.metrics import confusion_matrix
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from functools import partial
 from sklearn.manifold import TSNE
-# from medmnist import DermaMNIST
+
 
 from models.wrn_mixup_model import wrn28_10
 from models.res_mixup_model import resnet18
 from models.resnet12 import Res12
 from models.resnet_ssl import resnet12_ssl
+from models.MedViT import MedViT_small
 from datasets import MiniImageNet, CIFAR, CUB, ISIC2018, BreakHis, PapSmear, Blood, DermaMNIST, OrganAMNIST, PathMNIST
 from datasets.samplers import CategoriesSampler
 from methods import PTMAPLoss, ProtoLoss
 from self_optimal_transport import SOT
+from distillation_loss import DistillationLoss
 
 try:
     import wandb
@@ -36,6 +38,7 @@ except Exception as e:
     HAS_WANDB = False
 
 models = dict(wrn=wrn28_10, resnet18=resnet18, resnet12=Res12, resnet_ssl=resnet12_ssl)
+teacher_models = dict(wrn=wrn28_10, medvit_s=MedViT_small)
 datasets = dict(miniimagenet=MiniImageNet, cifar=CIFAR, isic2018=ISIC2018, breakhis=BreakHis, papsmear=PapSmear, blood=Blood, dermamnist=DermaMNIST, organamnist=OrganAMNIST,pathmnist=PathMNIST
                 )
 n_cls = dict(isic2018=7, breakhis=8, papsmear=7, blood=11, pathmnist=9, dermamnist=7, organamnist=11)
@@ -48,6 +51,8 @@ def get_model(model_name: str, args, m):
     Get the backbone model.
     """
     arch = model_name.lower()
+    print(f"Creating student model: {args.backbone}")
+
     if arch in models.keys():
         if 'vit' in arch:
             model = models[arch](num_classes=n_cls[args.dataset.lower()])
@@ -66,6 +71,31 @@ def get_model(model_name: str, args, m):
         return model
     else:
         raise ValueError(f'Model {model_name} not implemented. available models are: {list(models.keys())}')
+
+
+def get_teacher_model(m, args: argparse):
+    t_arch = args.teacher_backbone
+    if args.distillation_type != 'none':
+        assert args.teacher_path, 'need to specify teacher-path when using distillation'
+
+        print(f"Creating teacher model: {t_arch}")
+        # produce a student model with the same structure as teacher model without knowledge
+
+        if 'wrn' in t_arch:
+            teacher_model = teacher_models[t_arch](num_classes=n_cls[args.dataset.lower()] * m, dropRate=args.dropout)
+
+            # no sla
+            # teacher_model = teacher_models[t_arch](num_classes=n_cls[args.dataset.lower()], dropRate=args.dropout)
+
+        elif 'vit' in t_arch:
+            teacher_model = teacher_models[t_arch](num_classes=n_cls[args.dataset.lower()] * m)
+        
+        if torch.cuda.is_available():
+            torch.backends.cudnn.benchmark = True
+
+        if args.teacher_path:
+            teacher_model = load_teacher_weights(teacher_model, args.teacher_path)
+    return teacher_model
 
 
 def get_dataloader(set_name: str, args: argparse, constant: bool = False):
@@ -162,6 +192,15 @@ def load_criterion_optimizer(criterion, optimizer, args):
 
     print("Criterion and optimizer load successfully ")
     return criterion, optimizer
+
+
+def get_distillation_loss(criterion, teacher_model, distillation_type, distillation_alpha, distillation_tau, sla_reg):
+    """
+    Loss for knowledge distillation and wrap with backbone loss
+    """
+
+    criterion = DistillationLoss(criterion, teacher_model, distillation_type, distillation_alpha, distillation_tau, sla_reg)
+    return criterion
 
 
 def init_wandb(exp_name: str, args):
@@ -287,6 +326,54 @@ def load_weights(model: torch.nn.Module, args: argparse):
     print("Weights loaded successfully ")
     return model
 
+
+def load_teacher_weights(model: torch.nn.Module, path: str):
+    """
+    Load pretrained weights from given path.
+    """
+    if not path:
+        return model
+
+    print(f'Loading teacher weights from {path}')
+
+    state_dict = torch.load(path)
+    sd_keys = list(state_dict.keys())
+    
+    if 'state' in sd_keys:
+        state_dict = state_dict['state']
+        for k in list(state_dict.keys()):
+            if k.startswith('module.'):
+                state_dict["{}".format(k[len('module.'):])] = state_dict[k]
+                del state_dict[k]
+
+        model.load_state_dict(state_dict, strict=False)
+
+    elif 'params' in sd_keys:
+        state_dict = state_dict['params']
+        for k in list(state_dict.keys()):
+            if k.startswith('encoder.'):
+                state_dict["{}".format(k[len('encoder.'):])] = state_dict[k]
+
+            del state_dict[k]
+
+        model.load_state_dict(state_dict, strict=True)
+
+    elif 'model' in sd_keys:
+        checkpoint_model = state_dict['model']
+
+        model_state_dict = model.state_dict()
+        for k in ['proj_head.0.weight', 'proj_head.0.bias']:
+            if k in checkpoint_model and checkpoint_model[k].shape != model_state_dict[k].shape:
+                print(f"Removing key {k} from pretrained checkpoint")
+                del checkpoint_model[k]
+
+        model.load_state_dict(checkpoint_model, strict=False)
+
+    else:
+        model.load_state_dict(state_dict)
+
+    print("Weights loaded successfully ")
+    return model
 
 def get_fs_labels(method: str, num_way: int, num_query: int, num_shot: int):
     """
